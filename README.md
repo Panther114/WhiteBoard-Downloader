@@ -1,5 +1,6 @@
-## Whiteboard Automation Tool (V0.3.5)
+# Whiteboard Automation Tool (V0.3.5)
 
+Published by Gavania
 Automates downloading course materials from Blackboard using Selenium and Requests.
 
 ---
@@ -8,7 +9,7 @@ Automates downloading course materials from Blackboard using Selenium and Reques
 
 - **Operating System:** Windows 10/11
 - **Python:** 3.10 or higher
-- **Chrome Browser:** Installed
+- **Chrome Browser:** Installed (for now, only supports default install location)
 - **ChromeDriver:** Compatible with your Chrome version
 - **Python Packages:** `selenium`, `requests`, `tkinter` (usually included with Python)
 
@@ -16,27 +17,21 @@ Automates downloading course materials from Blackboard using Selenium and Reques
 
 ## Installation
 
-1. **Clone or Download the Repository**
-
-```bash
-git clone <repository_url>
-cd <repository_folder>
-````
-
-2. **Install Python Dependencies**
+1. **Install Python Dependencies**
 
 ```bash
 pip install selenium requests
 ```
 
-3. **Download ChromeDriver**
+2. **Download ChromeDriver**
 
 * Check your Chrome version:
   Open Chrome → Menu → Help → About Google Chrome
-* Download matching ChromeDriver: [https://sites.google.com/chromium.org/driver/](https://sites.google.com/chromium.org/driver/)
-* Place `chromedriver.exe` in the folder `chromedriver-win64` or update the path in the script.
+* Download matching ChromeDriver: [https://googlechromelabs.github.io/chrome-for-testing/#stable](https://googlechromelabs.github.io/chrome-for-testing/#stable)
+* Download ChromeDriver for win64 version, by pasting and opening the url from the Chromedriver Page
+* Unzip the download, and place the folder `chromedriver-win64` in the same directory as the python file
 
-4. **Verify Chrome Path**
+3. **Verify Chrome Path (optional)**
 
 Make sure the `chrome_path` variable in the script points to your Chrome executable, e.g.:
 
@@ -61,7 +56,7 @@ python whiteboard_downloader.py
 
 3. **Downloading Process**
 
-* The script will open Chrome, log into Blackboard, and fetch courses starting with "2025I".
+* The script will open Chrome, log into Blackboard, and fetch courses starting with "2025I". This means that the code is only suitable for 10th grade students this year. This issue will be addressed in the near future.
 * It automatically navigates course menus and downloads all available materials into the `downloads` folder.
 * Folder structure mirrors Blackboard course organization.
 
@@ -70,14 +65,12 @@ python whiteboard_downloader.py
 ## File Handling
 
 * **Sanitization:** Filenames are cleaned to remove invalid characters.
-* **Duplicate Handling:** If a file already exists, a number is appended, e.g., `file (1).pdf`.
-* **Unknown Extensions:** Files without extensions are saved as `.bin`.
 
 ---
 
 ## Notes
 
-* Avoid closing the Chrome window during operation.
+* Avoid closing the Chrome window during operation. You can do it, but it will cause errors.
 * Ensure a stable internet connection; requests may timeout otherwise.
 * Sidebar links like "Home Page", "Discussions", "Groups", "Tools", and "Help" are skipped automatically.
 
@@ -86,7 +79,7 @@ python whiteboard_downloader.py
 ## Troubleshooting
 
 * **ChromeDriver mismatch:** Update ChromeDriver to match your Chrome version.
-* **Timeouts:** Increase `WebDriverWait` durations if pages load slowly.
+* **Timeouts:** Increase `WebDriverWait` durations if pages load slowly, but mostly thats because abnormal internet connection (turn off VPN).
 * **Tkinter GUI issues:** Ensure Python is installed with Tkinter support.
 
 ---
@@ -94,6 +87,7 @@ python whiteboard_downloader.py
 ## Author
 
 Developed and maintained by **Gavania**
+Please contact me for any issues with the code.
 
 ```
 ```
