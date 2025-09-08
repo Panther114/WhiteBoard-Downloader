@@ -1,5 +1,4 @@
-````markdown
-# Whiteboard Automation Tool (V0.3.5)
+## Whiteboard Automation Tool (V0.3.5)
 
 Automates downloading course materials from Blackboard using Selenium and Requests.
 
