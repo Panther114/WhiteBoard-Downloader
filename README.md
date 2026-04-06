@@ -1,237 +1,628 @@
-
 **Es lebe der Arbeiterklasse! 工人阶级万岁! Long Live the Working Class!**
-# Whiteboard Downloader
-Whiteboard is
-a Python-based automation tool to download course materials from **SHSID Blackboard China**. \
- Using a variety of python modules, mostly selenium and requests, this project greatly saves time and effort during the preserving of course materials, and lays as the foundation for furthur, scaled extraction of data from **Blackboard**.
+
+# Whiteboard Downloader v2.0
+
+Modern, async-first automation tool to download course materials from **SHSID Blackboard China**. Built with TypeScript, Playwright, and modern best practices.
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Node.js](https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen)](https://nodejs.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.3-blue)](https://www.typescriptlang.org/)
 
 ---
 
-## Table of Contents
+## 🚀 What's New in v2.0
 
-1. [Overview](#overview)  
-2. [Features](#features)  
-3. [Prerequisites](#prerequisites)  
-4. [Installation](#installation)  
-5. [Configuration](#configuration)  
-6. [Running the Tool](#running-the-tool)  
-7. [Troubleshooting](#troubleshooting)  
-8. [Known Issues](#known-issues)  
-9. [License](#license)  
-
----
-
-## Overview
-
-This tool automates downloading materials from Blackboard China. It uses:
-
-- `requests` and `urllib3` for HTTP requests.  
-- `selenium` for browser automation where required.  
-- SSL/TLS handling to ensure secure connections with older servers.
-
-Unfortuately, this tool is **very picky** with versions of various libararies. For exact information, please refer to [Prerequisites](#prerequisites)  
+- **🔄 Modern Stack**: Completely rewritten in TypeScript with Playwright
+- **⚡ Concurrent Downloads**: Download multiple files simultaneously with configurable concurrency
+- **💾 Smart Caching**: SQLite database tracks downloaded files to enable resume capability
+- **🔁 Auto-Retry**: Automatic retry with exponential backoff for failed downloads
+- **🎨 Beautiful CLI**: Enhanced terminal UI with progress indicators and colored output
+- **🐳 Docker Support**: Run in containerized environment with zero setup
+- **📝 Comprehensive Logging**: Structured logging with Winston
+- **🔒 Type Safety**: Full TypeScript type safety throughout the codebase
+- **⚙️ Flexible Configuration**: Environment variables, config files, and CLI arguments
+- **🎯 Course Filtering**: Regex-based course filtering to download only what you need
 
 ---
 
-## Features
+## 📋 Table of Contents
 
-- Automatically logs into Blackboard
-- Uses a fixed algorithm to navigate through the blackboard file structure, detecting downloadable files.
-- Automatically organizes downloaded files into structured directories.  
-
----
-
-## Prerequisites
-
-Before running the tool, ensure your system meets the following:
-
-1. **Python**: Version **3.10 or 3.11** recommended. Python **3.12+** MAY have TLS/OpenSSL issues with legacy servers.  
-   To check your version, type in Command Prompt:
-   ```bash
-   python --version
-   ```
-Note: We are currently not sure if python 3.12 is compatible. If you're using Python 3.12+ and an error occured, please notify me.
-
-2. **OpenSSL**: Version **1.1.1** (or **3.x.**  Maybe.).\
-   To check your OpenSSL version:
-   (This should come with the python installation, theres no need to download it seperately.)
-
-   ```bash
-   python -c "import ssl; print(ssl.OPENSSL_VERSION)"
-   ```
-Note: We are currently unsure if **3.x** versions of OpenSSL is supported. If you're using **3.x** versions of OpenSSL and an error occured, please notify me.
-
-3. **Required Python Packages**:
-
-   ```bash
-   pip install selenium requests==2.28.2 urllib3==1.26.14
-   ```
-Note: Through numerous tests we infered that the latest versions of `requests` and `urllibs3` will result in compatibility issues. Therefore, please install past versions, as in the previous command line.
-
-4. **Chrome Browser & ChromeDriver**:
-
-   * Latest verion of Chrome Browser (Version 140.0.7339.81) in the default installation location. You can verify this by going to Chrome --> Settings --> About Chrome.
-   * Chromedriver-win64 folder, placed in the exact same directory as the `whiteboard_download_V.0.3.6.py`.
-   * Immediately inside the ChromeDriver folder should contain the `chromedriver.exe` and two other files. A common mistake when unzipping the `chromedriver-win64` folder is having an additional layer of folder.
-Note: The customization of `Chrome`/`Chromedriver` Path in the code is an upcoming feature. For those familiar with python, you can also edit it through lines 87-88 (for V.0.3.6): 
-   ```bash
-chrome_path = "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"
-chromedriver_path = "chromedriver-win64/chromedriver.exe"
-   ```
-
-5. **Internet Connection**: Required to download content from Blackboard. Dont use hotspot as the total download file size often exceeds 100MB.
+1. [Features](#-features)
+2. [Prerequisites](#-prerequisites)
+3. [Installation](#-installation)
+4. [Quick Start](#-quick-start)
+5. [Configuration](#-configuration)
+6. [Usage](#-usage)
+7. [Docker](#-docker)
+8. [Architecture](#-architecture)
+9. [Development](#-development)
+10. [Troubleshooting](#-troubleshooting)
+11. [Migration from v0.x](#-migration-from-v0x)
+12. [Known Issues](#-known-issues)
+13. [Contributing](#-contributing)
+14. [License](#-license)
 
 ---
 
-## Installation
-Note: This installation guide is designed for those lacking any previous coding skills, so it will not involve git cloning.
+## ✨ Features
 
-1. **Download the Release**
-You can do this by downloading the project as a .zip:
-\
-This is equivalent to copying the following link in a browser tab:
-   ```bash
-   https://github.com/Panther114/WhiteBoard-Downloader/archive/refs/heads/main.zip
-   ```
-
-2. **Unzip the zip**
-If you are downloading directly from github, all you have to do is unzip the file. The relative locations of the folders & files are already in correct order.
-
-3. **Check Prerequisites**
-Now you want to make sure that you have done everything in the [Prerequisites](#prerequisites)  part. \
-This includes: \
-   1.Python 3.10+ \
-   2.Chrome Browser & Matching ChromeDriver \
-   3.Required libraries. (Run `
-   pip install selenium requests==2.28.2 urllib3==1.26.14
-   ` in the command prompt.)\
-   4.Unwavering Determination.
-
-4. **Verify Installation**
-   Run a simple test, by pasting the following code in IDLE and executing it, to ensure your connnection works:
-This is crucial. 75% of errors are due to connection issues.
-
-   ```python
-   import requests
-   r = requests.get("https://shs.blackboardchina.cn")
-   print(r.status_code)
-   ```
-
-   Expected result: `200`\
-    \
-   If the result is not 200, or if an error occured, this is **likely** due to incompatible library versions. (See [Prerequisites](#prerequisites) part 3)\
-   - Make sure you have ran in command prompt  `pip install selenium requests==2.28.2 urllib3==1.26.14`.\
-   - If the error persists, please contact me.
+- ✅ **Automatic Authentication**: Handles login and session management
+- ✅ **Recursive Navigation**: Automatically traverses course structure and subfolders
+- ✅ **Smart File Naming**: Extracts proper filenames from Content-Disposition headers
+- ✅ **Duplicate Prevention**: Tracks downloads in database to skip already-downloaded files
+- ✅ **Concurrent Downloads**: Download multiple files in parallel (configurable)
+- ✅ **Automatic Retry**: Retries failed downloads with exponential backoff
+- ✅ **Progress Tracking**: Real-time progress indicators and statistics
+- ✅ **Course Filtering**: Filter courses by regex pattern
+- ✅ **Organized Structure**: Maintains Blackboard's folder hierarchy
+- ✅ **Resume Capability**: Resume interrupted downloads from where you left off
+- ✅ **Cross-Platform**: Works on Windows, macOS, and Linux
+- ✅ **Docker Support**: Run in isolated container environment
 
 ---
 
-## Configuration (Not recommended for V0.3.6 and older!)
+## 🔧 Prerequisites
 
-1. **ChromeDriver Path**
+### Node.js Installation
 
-   * By default, the script searches for `chromedriver` in the project folder.
-   * To specify a path manually, update the script:
+**Required**: Node.js **v18.0.0 or higher**
 
-   ```python
-   driver = webdriver.Chrome(executable_path="C:/path/to/chromedriver.exe", options=options)
-   ```
-2. **Chrome Path**
+Check your Node.js version:
+```bash
+node --version
+```
 
-   * By default, the script searches for `Google Chrome` in the default installation location.
-   * To specify a path manually, update the script:
+If you need to install or upgrade Node.js:
+- **Download**: [https://nodejs.org/](https://nodejs.org/) (LTS version recommended)
+- **Or use nvm**: [Node Version Manager](https://github.com/nvm-sh/nvm)
 
-   ```python
-   chrome_path = "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"
-   ```
+### System Requirements
 
-3. **Download Folder**
-
-   * The default download directory is `downloads/`. (relative to the main python script)
-   * You can change it by editing:
-
-   ```python
-   base_download = "downloads" # change this part
-   os.makedirs(base_download, exist_ok=True)
-   ```
+- **OS**: Windows 10+, macOS 10.15+, or Linux
+- **RAM**: 2GB minimum (4GB recommended)
+- **Disk Space**: Sufficient space for downloaded course materials (typically 1-5GB)
+- **Internet**: Stable connection (avoid mobile hotspots for large downloads)
 
 ---
 
-## Running the Tool
+## 📥 Installation
 
-1. Run the main script: (preferbly with a debugger so you can send me the error msg if something goes wrong)
+### Option 1: npm Install (Recommended)
 
-   ```bash
-   python     whiteboard_download_XXversioN.py
-   ```
+```bash
+# Clone the repository
+git clone https://github.com/Panther114/WhiteBoard-Downloader.git
+cd WhiteBoard-Downloader
 
-3. Enter your Gnumber and Password in the GUI pop-up.
+# Install dependencies
+npm install
 
-4. Files will be downloaded into structured folders automatically.
+# Install Playwright browsers
+npx playwright install chromium
+
+# Build the project
+npm run build
+```
+
+### Option 2: Docker (Zero Setup)
+
+```bash
+# Clone the repository
+git clone https://github.com/Panther114/WhiteBoard-Downloader.git
+cd WhiteBoard-Downloader
+
+# Build Docker image
+docker build -t whiteboard-downloader .
+
+# Run (see Docker section for details)
+docker run -it --rm whiteboard-downloader
+```
 
 ---
 
-## Troubleshooting
-Note: If anything goes wrong, first prioritize reporting the error and sending to me the error log! This will help a ton in future development, and potentially allow me realize flaws. I can also provide fast feedback, as I'm the one most familiar with the code.
-### SSL/TLS Errors
+## 🏁 Quick Start
 
-* If you get:
+### 1. Configure Credentials
 
-  ```
-  SSLError: [SSL: SSLV3_ALERT_HANDSHAKE_FAILURE] (followed by a long piece of info)
-  ```
+Create a `.env` file in the project root:
 
-  Ensure:
-  * **Check this first!** `requests` and `urllib3` are in the correct versions. (See [Prerequisites](#prerequisites) part 3)
-  * Python is version 3.10 or 3.11. (Maybe causing the issue)
-  * OpenSSL is 1.1.1. (Maybe causing the issue)
+```bash
+cp .env.example .env
+```
 
+Edit `.env` and add your credentials:
+```env
+BB_USERNAME=your_g_number
+BB_PASSWORD=your_password
+```
 
-### ChromeDriver Errors
-This one is a lot less trickly than the previous one :)
+### 2. Run the Downloader
 
-* If you see:
+```bash
+# Using npm
+npm start
 
-  ```
-  ValueError: The path is not a valid file
-  ```
+# Or run directly
+node dist/cli.js download
+```
 
-  Ensure:
+### 3. Interactive Mode (No .env Required)
 
-  * ChromeDriver executable exists and matches your Chrome version.
-  * The path is correctly set in the script.
+If you don't configure a `.env` file, the CLI will prompt you for credentials:
 
-### Module Errors
+```bash
+npm start
+```
 
-* If a module is missing:
+You'll see:
+```
+🎓 Whiteboard Downloader v2.0
 
+Please enter your Blackboard credentials:
+
+? G-Number: G12345
+? Password: ******
+```
+
+---
+
+## ⚙️ Configuration
+
+### Environment Variables
+
+All configuration can be set via `.env` file or environment variables:
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `BB_USERNAME` | Your G-Number | *Required* |
+| `BB_PASSWORD` | Your password | *Required* |
+| `BB_BASE_URL` | Blackboard base URL | `https://shs.blackboardchina.cn` |
+| `BB_LOGIN_URL` | Login page URL | `https://shs.blackboardchina.cn/webapps/login/` |
+| `DOWNLOAD_DIR` | Download directory | `./downloads` |
+| `MAX_CONCURRENT_DOWNLOADS` | Concurrent download limit | `5` |
+| `DOWNLOAD_TIMEOUT` | Download timeout (ms) | `60000` |
+| `BROWSER_TYPE` | Browser engine | `chromium` |
+| `HEADLESS` | Run browser headlessly | `true` |
+| `BROWSER_TIMEOUT` | Browser operation timeout | `30000` |
+| `DATABASE_PATH` | SQLite database path | `./whiteboard.db` |
+| `LOG_LEVEL` | Logging level | `info` |
+| `LOG_FILE` | Log file path | `./logs/whiteboard.log` |
+| `COURSE_FILTER` | Course regex filter | *(none)* |
+| `MAX_RETRIES` | Max retry attempts | `3` |
+| `RETRY_DELAY` | Retry delay (ms) | `2000` |
+
+### CLI Arguments
+
+Override configuration with CLI arguments:
+
+```bash
+node dist/cli.js download \
+  --username G12345 \
+  --password mypassword \
+  --dir ./my-downloads \
+  --headless false \
+  --filter "^2025I.*"
+```
+
+### View Current Configuration
+
+```bash
+node dist/cli.js config
+```
+
+---
+
+## 📖 Usage
+
+### Basic Usage
+
+```bash
+# Download all courses
+npm start
+
+# Or
+node dist/cli.js download
+```
+
+### With Options
+
+```bash
+# Download to specific directory
+node dist/cli.js download --dir ./my-courses
+
+# Run with visible browser (for debugging)
+node dist/cli.js download --headless false
+
+# Filter courses by pattern (e.g., only 2025 spring semester)
+node dist/cli.js download --filter "^2025I.*"
+
+# Combine options
+node dist/cli.js download \
+  --dir ./downloads \
+  --filter "^2025I" \
+  --headless true
+```
+
+### Resume Downloads
+
+The downloader automatically tracks completed downloads in an SQLite database. If interrupted:
+
+1. Simply run the command again
+2. Already downloaded files will be skipped
+3. Only new or failed files will be downloaded
+
+To start fresh:
+```bash
+rm whiteboard.db
+npm start
+```
+
+---
+
+## 🐳 Docker
+
+### Build Image
+
+```bash
+docker build -t whiteboard-downloader .
+```
+
+### Run with Interactive Credentials
+
+```bash
+docker run -it --rm \
+  -v $(pwd)/downloads:/app/downloads \
+  whiteboard-downloader
+```
+
+### Run with Environment Variables
+
+```bash
+docker run -it --rm \
+  -e BB_USERNAME=G12345 \
+  -e BB_PASSWORD=mypassword \
+  -v $(pwd)/downloads:/app/downloads \
+  whiteboard-downloader
+```
+
+### Run with .env File
+
+```bash
+docker run -it --rm \
+  --env-file .env \
+  -v $(pwd)/downloads:/app/downloads \
+  whiteboard-downloader
+```
+
+### Docker Compose
+
+Create `docker-compose.yml`:
+```yaml
+version: '3.8'
+services:
+  whiteboard-downloader:
+    build: .
+    environment:
+      - BB_USERNAME=your_g_number
+      - BB_PASSWORD=your_password
+    volumes:
+      - ./downloads:/app/downloads
+      - ./logs:/app/logs
+      - ./whiteboard.db:/app/whiteboard.db
+```
+
+Run:
+```bash
+docker-compose up
+```
+
+---
+
+## 🏗️ Architecture
+
+### Project Structure
+
+```
+whiteboard-downloader/
+├── src/
+│   ├── auth/              # Authentication & browser management
+│   ├── scraper/           # Web scraping logic
+│   ├── downloader/        # File download with retry logic
+│   ├── database/          # SQLite database for tracking
+│   ├── config/            # Configuration management
+│   ├── utils/             # Helper utilities
+│   │   ├── logger.ts      # Winston logging
+│   │   └── helpers.ts     # File operations
+│   ├── types/             # TypeScript type definitions
+│   ├── index.ts           # Main application class
+│   └── cli.ts             # CLI interface
+├── legacy/                # Original Python implementation
+├── docs/                  # Documentation
+├── tests/                 # Test suite
+├── package.json           # Dependencies
+├── tsconfig.json          # TypeScript configuration
+├── Dockerfile             # Docker configuration
+├── .env.example           # Environment template
+└── README.md              # This file
+```
+
+### Technology Stack
+
+- **Runtime**: Node.js 18+
+- **Language**: TypeScript 5.3
+- **Browser Automation**: Playwright
+- **HTTP Client**: Axios
+- **Database**: better-sqlite3
+- **CLI**: Commander.js + Inquirer
+- **Logging**: Winston
+- **Validation**: Zod
+- **Concurrency**: p-limit, p-retry
+
+### Key Design Decisions
+
+1. **TypeScript**: Type safety prevents runtime errors
+2. **Playwright over Selenium**: Modern API, better performance, no driver management
+3. **Axios for Downloads**: Playwright for auth, Axios for efficient file streaming
+4. **SQLite Database**: Persistent download tracking for resume capability
+5. **Concurrent Downloads**: p-limit for controlled parallelism
+6. **Zod Validation**: Runtime config validation with type inference
+
+---
+
+## 🛠️ Development
+
+### Setup Development Environment
+
+```bash
+# Install dependencies
+npm install
+
+# Run in development mode
+npm run dev
+
+# Build
+npm run build
+
+# Run tests
+npm test
+
+# Lint
+npm run lint
+
+# Format
+npm run format
+```
+
+### Project Scripts
+
+- `npm run build` - Compile TypeScript to JavaScript
+- `npm run dev` - Run with ts-node (development)
+- `npm start` - Run compiled application
+- `npm test` - Run Jest tests
+- `npm run lint` - Lint with ESLint
+- `npm run format` - Format with Prettier
+
+### Adding Features
+
+The codebase is modular. To extend functionality:
+
+1. **Add new scraper methods**: Edit `src/scraper/index.ts`
+2. **Modify download logic**: Edit `src/downloader/index.ts`
+3. **Change authentication**: Edit `src/auth/index.ts`
+4. **Add configuration options**: Edit `src/config/index.ts` and update types
+
+---
+
+## 🔍 Troubleshooting
+
+### Issue: "Module not found"
+
+```bash
+# Reinstall dependencies
+rm -rf node_modules package-lock.json
+npm install
+```
+
+### Issue: "Playwright browser not installed"
+
+```bash
+# Install Playwright browsers
+npx playwright install chromium
+```
+
+### Issue: "Login failed"
+
+- Verify credentials in `.env` file
+- Check if Blackboard site is accessible
+- Run with `--headless false` to see browser:
   ```bash
-  pip install module_name
+  node dist/cli.js download --headless false
   ```
 
-  Example:
+### Issue: "ECONNREFUSED" or network errors
 
-  ```bash
-  pip install selenium requests==2.28.2 urllib3==1.26.14
+- Check internet connection
+- Verify Blackboard URL is correct
+- Check if behind firewall/proxy
+
+### Issue: Downloads are slow
+
+- Increase concurrent downloads:
+  ```env
+  MAX_CONCURRENT_DOWNLOADS=10
   ```
+- Check network speed
+
+### Enable Debug Logging
+
+```env
+LOG_LEVEL=debug
+```
+
+Then check `logs/whiteboard.log` for detailed information.
 
 ---
 
-## Known Issues
+## 🔄 Migration from v0.x
 
-* **Python 3.12**: May not work due to OpenSSL 3.x incompatibilities with legacy TLS servers.
-* **Some legacy Blackboard servers**: Might still reject TLS connections; upgrading Python and OpenSSL is required.
-* **Deprecation warnings**: Python may show warnings for `ssl.PROTOCOL_TLSv1_2` or `cgi`. These do not break functionality.
+The legacy Python implementation is preserved in the `legacy/` folder.
+
+### Key Differences
+
+| Feature | v0.x (Python) | v2.0 (TypeScript) |
+|---------|---------------|-------------------|
+| Language | Python | TypeScript/Node.js |
+| Browser | Selenium + ChromeDriver | Playwright |
+| Downloads | Sequential | Concurrent |
+| Resume | No | Yes (SQLite) |
+| Retry | No | Yes (automatic) |
+| Config | Hardcoded | .env + CLI args |
+| GUI | tkinter | CLI (inquirer) |
+| Logging | print() | Winston |
+
+### Migration Steps
+
+1. Install Node.js 18+
+2. Clone and install v2.0
+3. Create `.env` with your credentials
+4. Run `npm start`
+
+Your old downloads won't be tracked in the new database, but the folder structure remains compatible.
 
 ---
 
-## License
+## ⚠️ Known Issues & Unresolved Questions
 
-This project is licensed under the MIT License.
+### Known Issues
+
+1. **Large File Downloads**: Files >500MB may timeout with default settings
+   - **Solution**: Increase `DOWNLOAD_TIMEOUT` in `.env`
+
+2. **Rate Limiting**: Blackboard may throttle too many concurrent requests
+   - **Solution**: Reduce `MAX_CONCURRENT_DOWNLOADS` to 3-5
+
+3. **Session Expiry**: Long-running downloads may experience session timeout
+   - **Solution**: Re-run the downloader (uses database to resume)
+
+### Unresolved Webpage Structure Questions
+
+Based on the legacy Python code analysis, the following questions remain about Blackboard's structure:
+
+1. **Dynamic Course IDs**:
+   - **Question**: Do course IDs change between semesters?
+   - **Current Assumption**: Course URLs remain stable within a semester
+   - **Impact**: May need to implement course ID tracking
+
+2. **Content Type Detection**:
+   - **Question**: Does Blackboard always provide accurate MIME types in Content-Type headers?
+   - **Current Approach**: Falls back to URL extension and magic bytes if needed
+   - **Needs Verification**: Test with various file types (videos, archives, etc.)
+
+3. **Subfolder Depth Limit**:
+   - **Question**: Is there a maximum nesting depth for folders?
+   - **Current Implementation**: Recursive with no depth limit
+   - **Potential Issue**: Stack overflow on deeply nested structures (unlikely)
+
+4. **Special Characters in Filenames**:
+   - **Question**: What's the full set of problematic characters in Blackboard filenames?
+   - **Current Approach**: Sanitization based on common issues
+   - **May Need**: More comprehensive character mapping
+
+5. **Cookie/Session Persistence**:
+   - **Question**: How long do Blackboard sessions remain valid?
+   - **Current Approach**: Single session for entire download process
+   - **May Need**: Session refresh logic for multi-hour downloads
+
+6. **Course Filter Patterns**:
+   - **Question**: Do all schools use the same course naming convention (e.g., "2025I...")?
+   - **Current Default**: Filters for "2025I" or "2026I" prefixes
+   - **Needs**: User-configurable pattern
+
+7. **Blackboard Updates**:
+   - **Question**: How often does Blackboard China update its UI/selectors?
+   - **Risk**: CSS selectors may break on updates
+   - **Mitigation**: Multiple selector strategies needed
+
+### CSS Selectors Used (May Need Updates)
+
+The following selectors are extracted from the legacy code and may need verification:
+
+```typescript
+// Courses list
+'ul.portletList-img.courseListing.coursefakeclass li a'
+
+// Sidebar menu items
+'#courseMenuPalette_contents li a'
+
+// Content links (downloadable files)
+'#content_listContainer a[target="_blank"]'
+
+// Subfolders
+'div.item.clearfix a'
+
+// My Institution navigation
+'td[id="MyInstitution.label"] a'
+
+// Cookie consent
+'#agree_button'
+
+// Login form
+'#user_id', '#password', '#entry-login'
+```
+
+**If Blackboard updates its interface, these selectors must be updated in:**
+- `src/auth/index.ts`
+- `src/scraper/index.ts`
 
 ---
 
-**Note:** Always ensure your testing environment has the correct Python, OpenSSL, and module versions for consistent results. This guide is intended for internal testing and controlled environments.
+## 🤝 Contributing
 
-Special thanks to **@AquaVision** and **@MaxShuang** for helping me during the testing process.
+Contributions are welcome! Please feel free to submit issues or pull requests.
+
+### How to Contribute
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+### Areas Needing Help
+
+- Testing on different systems
+- Verifying CSS selectors after Blackboard updates
+- Performance optimizations
+- Additional browser support (Firefox, WebKit)
+- Internationalization (i18n)
+- More comprehensive error handling
+
+---
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+---
+
+## 🙏 Acknowledgments
+
+Special thanks to:
+- **@AquaVision** and **@MaxShuang** for testing and feedback on v0.x
+- The Playwright team for excellent browser automation tools
+- The SHSID community
+
+---
+
+## 📞 Support
+
+- **Issues**: [GitHub Issues](https://github.com/Panther114/WhiteBoard-Downloader/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/Panther114/WhiteBoard-Downloader/discussions)
+
+---
+
+**⚠️ Disclaimer**: This tool is for educational purposes and personal use only. Always respect your institution's terms of service and acceptable use policies. The authors are not responsible for any misuse of this tool.
+
+---
 
 **Es lebe der Arbeiterklasse! 工人阶级万岁! Long Live the Working Class!**

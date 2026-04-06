@@ -1,0 +1,32 @@
+version: '3.8'
+
+services:
+  whiteboard-downloader:
+    build: .
+    container_name: whiteboard-downloader
+    environment:
+      # Blackboard credentials
+      - BB_USERNAME=${BB_USERNAME}
+      - BB_PASSWORD=${BB_PASSWORD}
+
+      # Configuration
+      - DOWNLOAD_DIR=/app/downloads
+      - MAX_CONCURRENT_DOWNLOADS=5
+      - HEADLESS=true
+      - LOG_LEVEL=info
+
+      # Optional course filter
+      # - COURSE_FILTER=^2025I.*
+
+    volumes:
+      # Mount downloads directory
+      - ./downloads:/app/downloads
+
+      # Mount logs directory
+      - ./logs:/app/logs
+
+      # Persist database for resume capability
+      - ./whiteboard.db:/app/whiteboard.db
+
+    # Remove container after completion
+    restart: "no"
