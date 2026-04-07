@@ -10,8 +10,15 @@ import { execSync } from 'child_process';
 import cliProgress from 'cli-progress';
 import { WhiteboardDownloader } from './index';
 import { getConfig } from './config';
-import { Config } from './types';
+import { Config, DiscoveredFile } from './types';
 import { formatBytes } from './utils/helpers';
+
+// Separator is available at runtime in inquirer v8 as a property on the module.
+// @types/inquirer@9 ships types for inquirer@9 while the runtime is inquirer@8,
+// so there is an unavoidable version mismatch.  We bridge it with a minimal cast
+// that preserves the constructor signature we actually use.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const InquirerSeparator: new (line?: string) => unknown = (inquirer as any).Separator;
 
 const program = new Command();
 
@@ -61,7 +68,6 @@ program
       console.log(chalk.gray('This wizard will create a .env file with your settings.\n'));
 
       const envPath = path.resolve('.env');
-      const examplePath = path.resolve('.env.example');
 
       // Load existing .env values for defaults
       let existingUsername = '';
@@ -138,12 +144,13 @@ program
 // ---------------------------------------------------------------------------
 program
   .command('download')
-  .description('Download all course materials')
+  .description('Discover course materials, select files interactively, then download')
   .option('-u, --username <username>', 'Blackboard username (G-Number)')
   .option('-p, --password <password>', 'Blackboard password')
   .option('-d, --dir <directory>', 'Download directory', './downloads')
   .option('--headless <boolean>', 'Run browser in headless mode', 'true')
   .option('--filter <pattern>', 'Course filter regex pattern')
+  .option('--all', 'Skip the selection GUI and download everything')
   .action(async (options) => {
     try {
       console.log(chalk.bold.cyan('\n🎓 Whiteboard Downloader v2.0\n'));
@@ -176,7 +183,7 @@ program
         username = username || answers.username;
         password = password || answers.password;
 
-        // Offer to persist credentials in .env so the user only enters them once
+        // Offer to persist credentials
         const envPath = path.resolve('.env');
         const { saveCredentials } = await inquirer.prompt([
           {
@@ -193,7 +200,7 @@ program
         }
       }
 
-      // Load configuration with overrides
+      // Load configuration
       const config: Config = getConfig({
         username,
         password,
@@ -211,24 +218,21 @@ program
 
       const spinner = ora('Initializing...').start();
 
-      // Create downloader instance
       const wbDownloader = new WhiteboardDownloader(config);
 
       // -----------------------------------------------------------------------
-      // Progress GUI — multi-bar display for active downloads
+      // Progress multi-bar (shown during the actual download phase)
       // -----------------------------------------------------------------------
       const multibar = new cliProgress.MultiBar(
         {
           clearOnComplete: false,
           hideCursor: true,
           autopadding: true,
-          format:
-            ' {bar} {percentage}% | {filename} | {downloadedStr} / {totalStr}',
+          format: ' {bar} {percentage}% | {filename} | {downloadedStr} / {totalStr}',
         },
         cliProgress.Presets.shades_classic
       );
 
-      // Track per-file progress bars
       const bars = new Map<string, cliProgress.SingleBar>();
       let totalFiles = 0;
       let completedFiles = 0;
@@ -303,17 +307,63 @@ program
       // -----------------------------------------------------------------------
 
       try {
-        // Initialize (browser + login)
+        // Phase 1: Initialize (browser + login)
         spinner.text = 'Launching browser and logging in...';
         await wbDownloader.initialize();
         spinner.succeed('Logged in successfully');
 
-        // Download all — spinner gives way to progress bars
-        spinner.start('Scanning courses...');
+        // Phase 2: Discover all files
+        spinner.start('Scanning all course materials...');
+        const discoveredFiles = await wbDownloader.discoverAllFiles();
         spinner.stop();
-        console.log(chalk.cyan('\n📥 Downloading course materials...\n'));
 
-        await wbDownloader.downloadAll();
+        if (discoveredFiles.length === 0) {
+          console.log(chalk.yellow('\nNo downloadable files found.\n'));
+          return;
+        }
+
+        // Phase 3: Fetch file sizes via HEAD requests
+        spinner.start(`Fetching metadata for ${discoveredFiles.length} files...`);
+        const enrichedFiles = await wbDownloader.fetchFileMetadata(discoveredFiles);
+        const withSize = enrichedFiles.filter(f => f.size !== undefined).length;
+        spinner.succeed(
+          `Metadata fetched (${withSize} of ${enrichedFiles.length} files have known size)`
+        );
+
+        let filesToDownload: DiscoveredFile[];
+
+        if (options.all) {
+          // --all flag: skip GUI, download everything
+          filesToDownload = enrichedFiles;
+          console.log(
+            chalk.cyan(`\n📥 Downloading all ${filesToDownload.length} files...\n`)
+          );
+        } else {
+          // Phase 4: GUI file selection
+          console.log();
+          filesToDownload = await selectFilesInteractively(enrichedFiles);
+
+          if (filesToDownload.length === 0) {
+            console.log(chalk.yellow('\nNo files selected. Exiting.\n'));
+            return;
+          }
+
+          console.log(
+            chalk.cyan(`\n📥 Downloading ${filesToDownload.length} selected files...\n`)
+          );
+        }
+
+        // Phase 5: Sort by size (small files first) so quick downloads
+        // complete immediately while large files run in parallel.
+        filesToDownload.sort((a, b) => {
+          if (a.size === undefined && b.size === undefined) return 0;
+          if (a.size === undefined) return 1;
+          if (b.size === undefined) return -1;
+          return a.size - b.size;
+        });
+
+        // Phase 6: Download selected files
+        await wbDownloader.downloadSelected(filesToDownload);
 
         multibar.stop();
 
@@ -380,6 +430,83 @@ program
       process.exit(1);
     }
   });
+
+// ---------------------------------------------------------------------------
+// Interactive file selection GUI
+// ---------------------------------------------------------------------------
+
+/**
+ * Display an inquirer checkbox list grouped by course/section.
+ * All files are pre-selected; the user can uncheck what they don't want.
+ * Returns only the files the user kept checked.
+ */
+async function selectFilesInteractively(files: DiscoveredFile[]): Promise<DiscoveredFile[]> {
+  // Group files by "CourseName / SectionName"
+  const groups = new Map<string, DiscoveredFile[]>();
+  for (const file of files) {
+    const key = `${file.courseName} / ${file.sectionName}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(file);
+  }
+
+  // Build choices array with Separator headers for each group
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const choices: any[] = [];
+
+  /** Column width for the size label (e.g. "10.23 MB") — wide enough for GB values. */
+  const SIZE_LABEL_WIDTH = 9;
+
+  for (const [groupName, groupFiles] of groups) {
+    choices.push(new InquirerSeparator(`\n  ── ${groupName} ──`));
+
+    for (const file of groupFiles) {
+      const typeLabel = (
+        file.fileType ||
+        path.extname(file.name).slice(1) ||
+        '?'
+      )
+        .toUpperCase()
+        .padEnd(5);
+      const sizeLabel = file.size !== undefined ? formatBytes(file.size).padStart(SIZE_LABEL_WIDTH) : '      ?'.padStart(SIZE_LABEL_WIDTH);
+
+      choices.push({
+        name: `${typeLabel}  ${sizeLabel}  ${file.name}`,
+        value: file,
+        checked: true,
+      });
+    }
+  }
+
+  const totalSize = files.reduce((sum, f) => sum + (f.size ?? 0), 0);
+  const knownCount = files.filter(f => f.size !== undefined).length;
+
+  console.log(chalk.bold.cyan(`📚 Found ${files.length} files across ${groups.size} sections`));
+  if (knownCount > 0) {
+    console.log(
+      chalk.gray(
+        `   Total size (known): ${formatBytes(totalSize)} ` +
+          `(${knownCount}/${files.length} sizes known)`
+      )
+    );
+  }
+  console.log(
+    chalk.gray(
+      '   Use ↑↓ to navigate, Space to toggle, a to select/deselect all, Enter to confirm\n'
+    )
+  );
+
+  const answers: any = await inquirer.prompt([
+    {
+      type: 'checkbox',
+      name: 'selectedFiles',
+      message: `Select files to download (${files.length} pre-selected):`,
+      choices,
+      pageSize: 20,
+    },
+  ]);
+
+  return (answers.selectedFiles as DiscoveredFile[]) || [];
+}
 
 // ---------------------------------------------------------------------------
 // Helpers

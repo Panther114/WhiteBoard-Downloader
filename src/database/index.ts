@@ -15,6 +15,8 @@ export class DownloadDatabase {
     }
 
     this.db = new Database(dbPath);
+    // WAL mode gives better concurrent-read performance (many parallel downloads)
+    this.db.pragma('journal_mode = WAL');
     this.initTables();
     log.info(`Database initialized at ${dbPath}`);
   }

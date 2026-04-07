@@ -26,6 +26,24 @@ export interface DownloadableFile {
   error?: string;
 }
 
+/**
+ * A file discovered during the scrape phase, enriched with course/section
+ * context for display in the selection GUI.
+ */
+export interface DiscoveredFile {
+  name: string;
+  url: string;
+  courseName: string;
+  sectionName: string;
+  /** Absolute local directory where the file should be saved */
+  savePath: string;
+  size?: number;
+  mimeType?: string;
+  /** Upper-case extension label, e.g. "PDF", "PPTX" */
+  fileType?: string;
+  status: 'pending' | 'downloading' | 'completed' | 'failed';
+}
+
 export interface SidebarLink {
   title: string;
   url: string;
