@@ -63,6 +63,33 @@ if (-Not (Test-Path "dist\cli.js")) {
 # Run the downloader
 Write-Host "[INFO] Starting Whiteboard Downloader..." -ForegroundColor Green
 Write-Host ""
+
+# Check if .env exists and has credentials; if not, run setup
+if (-Not (Test-Path ".env")) {
+    Write-Host "[INFO] No .env file found - launching setup wizard..." -ForegroundColor Yellow
+    Write-Host ""
+    node dist\cli.js setup
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "[ERROR] Setup failed." -ForegroundColor Red
+        Read-Host "Press Enter to exit"
+        exit 1
+    }
+    Write-Host ""
+} else {
+    $envContent = Get-Content ".env" -Raw
+    if (-Not ($envContent -match "BB_USERNAME=(?!your_g_number|`$).+")) {
+        Write-Host "[INFO] Credentials not configured - launching setup wizard..." -ForegroundColor Yellow
+        Write-Host ""
+        node dist\cli.js setup
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "[ERROR] Setup failed." -ForegroundColor Red
+            Read-Host "Press Enter to exit"
+            exit 1
+        }
+        Write-Host ""
+    }
+}
+
 node dist\cli.js download
 
 # Keep window open if there's an error

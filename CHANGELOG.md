@@ -63,7 +63,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## PR #1 — Node.js Compatibility and URL Construction Bug Fixes
+## PR #2 — Download Progress GUI, Setup Wizard, and Single-Credential Storage
+
+### What changed
+
+#### GUI — Per-file download progress display
+- Added `cli-progress` dependency for multi-bar terminal progress display
+- `FileDownloader` now extends `EventEmitter` and emits five events during each download:
+  - `download:start` — file added to active queue
+  - `download:progress` — bytes received / total bytes (from `Content-Length` header)
+  - `download:complete` — file written, final size known
+  - `download:error` — download failed
+  - `download:skip` — file already in database, skipped
+- `WhiteboardDownloader` extends `EventEmitter` and re-emits all `FileDownloader` events, giving the CLI a single observable entry point
+- The `download` command now renders a live multi-bar display showing:
+  - Per-file progress bar, percentage, downloaded bytes, and total size
+  - A summary table (completed / failed / skipped) on completion
+- The `ora` spinner is still used for the initialization phase (browser launch + login)
+
+#### Setup wizard (`whiteboard-dl setup` / `npm run setup`)
+- New `setup` CLI command guides users through first-time configuration interactively
+- Prompts for G-Number, password, download directory, and optional Playwright browser installation
+- Writes (or updates) a `.env` file — the single source of truth for credentials
+- `npm run setup` convenience script added to `package.json`
+- Launcher scripts (`start.bat`, `start.ps1`, `start.sh`) now detect missing or unconfigured `.env` and automatically launch the setup wizard before starting downloads
+
+#### Single credential entry
+- Users previously had to edit `.env.example` → `.env` **and** re-enter credentials at the CLI prompt
+- Now: the `setup` wizard writes credentials to `.env` once; all subsequent runs read from `.env` without prompting
+- If a user still runs `download` without a `.env`, they are prompted for credentials **once** and offered the option to save them to `.env` for future runs
+
+### What was NOT changed
+- Core download logic (retry, concurrency, file writing) — unchanged
+- Auth module — unchanged
+- Database schema and tracking — unchanged
+- File naming and sanitization — unchanged
+- Configuration schema (Zod validation) — unchanged
+- Docker configuration — unchanged
+
+### Notes / Risks
+- `FileDownloader` now extends `EventEmitter`; this is additive and fully backward-compatible
+- Progress percentages are exact when the server returns a `Content-Length` header; otherwise the bar shows `?` for total size
+- The `setup` command calls `execSync('npx playwright install chromium')` — this requires internet access; failure is handled gracefully with a warning
+- Credentials written to `.env` are protected by the existing `.gitignore` entry
+
+---
+
 
 ### What changed
 - **Fixed invalid course URL construction**: Course URLs with leading/trailing whitespace and relative paths are now properly trimmed and constructed with the full base domain

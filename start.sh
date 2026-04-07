@@ -65,6 +65,34 @@ fi
 # Run the downloader
 echo "[INFO] Starting Whiteboard Downloader..."
 echo ""
+
+# Check if .env exists and has real credentials; if not, run setup
+if [ ! -f ".env" ]; then
+    echo "[INFO] No .env file found - launching setup wizard..."
+    echo ""
+    node dist/cli.js setup
+    if [ $? -ne 0 ]; then
+        echo "[ERROR] Setup failed."
+        read -p "Press Enter to exit..."
+        exit 1
+    fi
+    echo ""
+else
+    # Check if BB_USERNAME is set to something other than the placeholder
+    if ! grep -qP "^BB_USERNAME=(?!your_g_number|\$).+" .env 2>/dev/null && \
+       ! grep -qE "^BB_USERNAME=[^$].+" .env 2>/dev/null; then
+        echo "[INFO] Credentials not configured - launching setup wizard..."
+        echo ""
+        node dist/cli.js setup
+        if [ $? -ne 0 ]; then
+            echo "[ERROR] Setup failed."
+            read -p "Press Enter to exit..."
+            exit 1
+        fi
+        echo ""
+    fi
+fi
+
 node dist/cli.js download
 
 # Keep terminal open if there's an error

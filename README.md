@@ -17,6 +17,9 @@ Modern, async-first automation tool to download course materials from **SHSID Bl
 - **💾 Smart Caching**: SQLite database tracks downloaded files to enable resume capability
 - **🔁 Auto-Retry**: Automatic retry with exponential backoff for failed downloads
 - **🎨 Beautiful CLI**: Enhanced terminal UI with progress indicators and colored output
+- **📊 Download Progress GUI**: Live multi-bar progress display with file names, sizes, and per-file percentages
+- **🛠️ Setup Wizard**: `npm run setup` guides you through first-time credential configuration
+- **🔑 Single Credential Entry**: Enter credentials once — saved to `.env`, never asked again
 - **🐳 Docker Support**: Run in containerized environment with zero setup
 - **📝 Comprehensive Logging**: Structured logging with Winston
 - **🔒 Type Safety**: Full TypeScript type safety throughout the codebase
@@ -53,7 +56,9 @@ Modern, async-first automation tool to download course materials from **SHSID Bl
 - ✅ **Duplicate Prevention**: Tracks downloads in database to skip already-downloaded files
 - ✅ **Concurrent Downloads**: Download multiple files in parallel (configurable)
 - ✅ **Automatic Retry**: Retries failed downloads with exponential backoff
-- ✅ **Progress Tracking**: Real-time progress indicators and statistics
+- ✅ **Download Progress GUI**: Live multi-bar progress display (file name, size, percentage)
+- ✅ **Setup Wizard**: `npm run setup` or `whiteboard-dl setup` for first-time configuration
+- ✅ **Single Credential Entry**: Credentials stored in `.env` — enter once, reuse forever
 - ✅ **Course Filtering**: Filter courses by regex pattern
 - ✅ **Organized Structure**: Maintains Blackboard's folder hierarchy
 - ✅ **Resume Capability**: Resume interrupted downloads from where you left off
@@ -140,19 +145,21 @@ docker run -it --rm whiteboard-downloader
 
 ## 🏁 Quick Start
 
-### 1. Configure Credentials
+### 1. Configure Credentials (one-time setup)
 
-Create a `.env` file in the project root:
+Run the interactive setup wizard:
 
 ```bash
-cp .env.example .env
+npm run setup
 ```
 
-Edit `.env` and add your credentials:
-```env
-BB_USERNAME=your_g_number
-BB_PASSWORD=your_password
-```
+This will prompt you for your G-Number, password, and download directory, then save everything to a `.env` file. You will **not** be asked for credentials again on subsequent runs.
+
+> **Alternatively**, you can copy `.env.example` to `.env` and fill in the values manually:
+> ```bash
+> cp .env.example .env
+> # edit .env and set BB_USERNAME and BB_PASSWORD
+> ```
 
 ### 2. Run the Downloader
 
@@ -160,39 +167,44 @@ BB_PASSWORD=your_password
 
 **Windows:**
 - Double-click `start.bat` or `start.ps1` in the project folder
+- If no `.env` is found, the setup wizard launches automatically
 
 **macOS/Linux:**
 - Double-click `start.sh` (make it executable first: `chmod +x start.sh`)
+- If no `.env` is found, the setup wizard launches automatically
 
 **Want a desktop shortcut?** See [LAUNCHER_GUIDE.md](LAUNCHER_GUIDE.md) for detailed instructions.
 
 #### Option B: Command Line
 
 ```bash
-# Using npm
+# Run downloads (reads credentials from .env)
 npm start download
 
 # Or run directly
 node dist/cli.js download
 ```
 
-### 3. Interactive Mode (No .env Required)
+### 3. Download Progress Display
 
-If you don't configure a `.env` file, the CLI will prompt you for credentials:
+While downloading, a live multi-bar progress display shows each file:
 
-```bash
-npm start
+```
+ ████████████████░░░░  80% | Lecture_Notes_Week3.pdf       | 3.2 MB / 4.0 MB
+ ██████████████████░░  92% | Assignment_1_Solutions.docx   | 1.8 MB / 2.0 MB
+ ████████████████████ 100% | Syllabus_2025.pdf             | 512 KB / 512 KB
 ```
 
-You'll see:
+A summary is printed when all downloads finish:
 ```
-🎓 Whiteboard Downloader v2.0
-
-Please enter your Blackboard credentials:
-
-? G-Number: G12345
-? Password: ******
+  ✓ Completed   42
+  ✗ Failed       0
+  ⏭ Skipped     11
 ```
+
+### 4. Interactive Mode (No .env Required)
+
+If you skip the setup and run `download` without a `.env`, the CLI will prompt for credentials and then offer to save them for future runs.
 
 ---
 
@@ -244,11 +256,20 @@ node dist/cli.js config
 
 ## 📖 Usage
 
+### First-Time Setup
+
+```bash
+# Interactive setup wizard — saves credentials to .env
+npm run setup
+# or
+node dist/cli.js setup
+```
+
 ### Basic Usage
 
 ```bash
 # Download all courses
-npm start
+npm start download
 
 # Or
 node dist/cli.js download

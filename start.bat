@@ -66,6 +66,33 @@ if not exist "dist\cli.js" (
 REM Run the downloader
 echo [INFO] Starting Whiteboard Downloader...
 echo.
+
+REM Check if .env exists and has credentials; if not, run setup
+if not exist ".env" (
+    echo [INFO] No .env file found - launching setup wizard...
+    echo.
+    node dist\cli.js setup
+    if %errorlevel% neq 0 (
+        echo [ERROR] Setup failed.
+        pause
+        exit /b 1
+    )
+    echo.
+) else (
+    findstr /C:"BB_USERNAME=" .env | findstr /V /C:"BB_USERNAME=your_g_number" | findstr /V /C:"BB_USERNAME=$" >nul 2>nul
+    if %errorlevel% neq 0 (
+        echo [INFO] Credentials not configured - launching setup wizard...
+        echo.
+        node dist\cli.js setup
+        if %errorlevel% neq 0 (
+            echo [ERROR] Setup failed.
+            pause
+            exit /b 1
+        )
+        echo.
+    )
+)
+
 node dist\cli.js download
 
 REM Keep window open if there's an error
