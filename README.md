@@ -68,15 +68,31 @@ Modern, async-first automation tool to download course materials from **SHSID Bl
 ### Node.js Installation
 
 **Required**: Node.js **v18.0.0 or higher**
+**Recommended**: Node.js **v20.x or v22.x LTS**
+**⚠️ Not Compatible**: Node.js **v24+** (too new, causes native module compilation issues)
 
 Check your Node.js version:
 ```bash
 node --version
 ```
 
+**Why LTS versions?**
+- This project uses `better-sqlite3`, a native module that requires compilation
+- Node.js v24+ introduces breaking changes (requires C++20) that aren't yet fully supported
+- LTS versions (Long Term Support) are stable, well-tested, and recommended for production use
+
 If you need to install or upgrade Node.js:
-- **Download**: [https://nodejs.org/](https://nodejs.org/) (LTS version recommended)
+- **Download**: [https://nodejs.org/](https://nodejs.org/) (Choose the **LTS version**)
 - **Or use nvm**: [Node Version Manager](https://github.com/nvm-sh/nvm)
+  ```bash
+  # Install Node.js v20 LTS
+  nvm install 20
+  nvm use 20
+
+  # Or v22 LTS
+  nvm install 22
+  nvm use 22
+  ```
 
 ### System Requirements
 
@@ -429,6 +445,75 @@ The codebase is modular. To extend functionality:
 
 ## 🔍 Troubleshooting
 
+### Issue: Node.js Module Version Mismatch (better-sqlite3)
+
+**Error message:**
+```
+Error: The module '...\better_sqlite3.node' was compiled against a different Node.js version using NODE_MODULE_VERSION 115. This version of Node.js requires NODE_MODULE_VERSION 137.
+```
+
+**Cause:** The `better-sqlite3` native module was compiled for a different Node.js version than you're currently running.
+
+**Solution 1: Rebuild the module (Quick Fix)**
+```bash
+npm rebuild better-sqlite3
+```
+
+**Solution 2: Clean reinstall (Recommended)**
+```bash
+# Windows PowerShell (as Administrator)
+Remove-Item -Recurse -Force node_modules
+Remove-Item package-lock.json
+npm install
+
+# Windows Command Prompt (as Administrator)
+rmdir /s /q node_modules
+del package-lock.json
+npm install
+
+# macOS/Linux
+rm -rf node_modules package-lock.json
+npm install
+```
+
+**Solution 3: Use Node.js LTS version (Most Reliable)**
+
+The project requires **Node.js v18-v22**. If you're using Node.js v24+, please downgrade to an LTS version:
+
+1. **Check your Node.js version:**
+   ```bash
+   node --version
+   ```
+
+2. **Install Node.js LTS (v20.x or v22.x recommended):**
+   - Download from [https://nodejs.org/](https://nodejs.org/)
+   - Or use [nvm](https://github.com/nvm-sh/nvm) to switch versions:
+     ```bash
+     nvm install 20
+     nvm use 20
+     ```
+
+3. **After switching Node.js versions, reinstall dependencies:**
+   ```bash
+   rm -rf node_modules package-lock.json
+   npm install
+   npm run build
+   ```
+
+**Note:** Node.js v24+ introduces breaking changes that may cause native modules like `better-sqlite3` to fail compilation. Always use LTS versions for stability.
+
+### Issue: npm install fails with C++ compilation errors
+
+**Error message:**
+```
+error C1189: #error: "C++20 or later required."
+gyp ERR! build error
+```
+
+**Cause:** You're using Node.js v24+ which requires C++20, but your build tools don't support it yet.
+
+**Solution:** Downgrade to Node.js LTS (v20.x or v22.x) as described above.
+
 ### Issue: "Module not found"
 
 ```bash
@@ -452,6 +537,63 @@ npx playwright install chromium
   ```bash
   node dist/cli.js download --headless false
   ```
+- Enable debug logging to see detailed navigation information:
+  ```bash
+  # Set in .env file
+  LOG_LEVEL=debug
+
+  # Or via environment variable
+  LOG_LEVEL=debug node dist/cli.js download
+  ```
+
+### Issue: "Cannot navigate to invalid URL"
+
+**Error message:**
+```
+page.goto: Protocol error (Page.navigate): Cannot navigate to invalid URL
+```
+
+**Cause:** This was a bug in v2.0.0 where course URLs were not properly constructed (fixed in latest version).
+
+**Solution:** Ensure you have the latest version with the URL construction bug fix. The scraper now properly:
+- Trims whitespace from URLs
+- Constructs full URLs with base domain for relative paths
+- Logs all URL construction in debug mode
+
+### Enable Debug Logging
+
+For troubleshooting any issues, enable debug-level logging to get detailed information about:
+- URL construction and navigation
+- Course/file discovery
+- Authentication flow
+- Download attempts
+
+```env
+# In .env file
+LOG_LEVEL=debug
+```
+
+Or set via environment variable:
+```bash
+# Linux/macOS
+LOG_LEVEL=debug node dist/cli.js download
+
+# Windows PowerShell
+$env:LOG_LEVEL="debug"; node dist/cli.js download
+
+# Windows Command Prompt
+set LOG_LEVEL=debug && node dist/cli.js download
+```
+
+Debug logs include:
+- Current page URLs at each navigation step
+- Raw href attributes extracted from HTML
+- Constructed full URLs
+- Course/file filtering decisions
+- Authentication progress with URL tracking
+- File discovery with counts at each step
+
+Check `logs/whiteboard.log` for the complete debug log.
 
 ### Issue: "ECONNREFUSED" or network errors
 
