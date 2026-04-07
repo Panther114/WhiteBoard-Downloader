@@ -1,6 +1,6 @@
 import path from 'path';
 import { EventEmitter } from 'events';
-import { Config } from './types';
+import { Config, DiscoveredFile, DownloadableFile } from './types';
 import { BlackboardAuth } from './auth';
 import { BlackboardScraper } from './scraper';
 import { FileDownloader } from './downloader';
@@ -51,106 +51,206 @@ export class WhiteboardDownloader extends EventEmitter {
     log.info('Initialization complete');
   }
 
+  // ---------------------------------------------------------------------------
+  // Discovery phase — navigate the entire course tree, return all files
+  // ---------------------------------------------------------------------------
+
   /**
-   * Download all course materials
+   * Traverse every course → section → folder recursively and return a flat
+   * list of DiscoveredFile objects.  No downloads are performed.
+   * Call this before presenting the GUI selection to the user.
    */
-  async downloadAll(): Promise<void> {
-    if (!this.scraper || !this.downloader) {
+  async discoverAllFiles(): Promise<DiscoveredFile[]> {
+    if (!this.scraper) {
       throw new Error('Not initialized. Call initialize() first.');
     }
 
     ensureDirectory(this.config.downloadDir);
 
-    // Get courses
     const courses = await this.scraper.getCourses();
 
     if (courses.length === 0) {
       log.warn('No courses found');
-      return;
+      return [];
     }
 
-    log.info(`Processing ${courses.length} courses...`);
+    log.info(`Discovering files in ${courses.length} courses...`);
 
-    // Process each course
+    const allFiles: DiscoveredFile[] = [];
+
     for (const course of courses) {
-      log.info(`\n${'='.repeat(60)}`);
-      log.info(`Processing course: ${course.name}`);
+      log.info(`${'='.repeat(60)}`);
+      log.info(`Discovering course: ${course.name}`);
       log.info('='.repeat(60));
 
       const coursePath = path.join(this.config.downloadDir, course.path);
       ensureDirectory(coursePath);
 
       try {
-        // Get sidebar links
         const sidebarLinks = await this.scraper.getSidebarLinks(course.url);
 
-        // Process each sidebar section
         for (const link of sidebarLinks) {
-          log.info(`  Processing section: ${link.title}`);
+          log.info(`  Scanning section: ${link.title}`);
 
           const sectionPath = path.join(coursePath, link.path);
           ensureDirectory(sectionPath);
 
-          // Navigate to section
-          const page = this.auth.getPage();
-          await page.goto(link.url, { waitUntil: 'networkidle' });
+          const ok = await this.scraper.navigateTo(link.url);
+          if (!ok) {
+            log.warn(`  Skipping section "${link.title}" — navigation failed`);
+            continue;
+          }
 
-          // Download files and process subfolders recursively
-          await this.processFolder(sectionPath);
+          const sectionFiles = await this.discoverFolder(
+            sectionPath,
+            course.name,
+            link.title
+          );
+          allFiles.push(...sectionFiles);
         }
 
-        // Return to home
+        // Return to home between courses
         await this.scraper.returnToHome();
 
-        log.info(`✓ Completed course: ${course.name}`);
+        log.info(`✓ Finished discovering course: ${course.name}`);
       } catch (error: any) {
-        log.error(`Failed to process course ${course.name}: ${error.message}`);
+        log.error(`Failed to discover course ${course.name}: ${error.message}`);
       }
     }
 
-    // Print final statistics
-    this.printStats();
+    log.info(`Discovery complete — found ${allFiles.length} files total`);
+    return allFiles;
   }
 
   /**
-   * Recursively process a folder and its subfolders
+   * Recursively discover files in the current page (already navigated to).
+   * Does NOT download anything.
    */
-  private async processFolder(currentPath: string): Promise<void> {
-    if (!this.scraper || !this.downloader) return;
+  private async discoverFolder(
+    currentPath: string,
+    courseName: string,
+    sectionName: string
+  ): Promise<DiscoveredFile[]> {
+    if (!this.scraper) return [];
 
-    // Get files in current folder
-    const files = await this.scraper.getDownloadableFiles(currentPath);
+    const discovered: DiscoveredFile[] = [];
 
-    if (files.length > 0) {
-      log.info(`    Found ${files.length} files`);
-      await this.downloader.downloadFiles(files);
+    // Files on this page
+    const rawFiles = await this.scraper.getDownloadableFiles(currentPath);
+    for (const f of rawFiles) {
+      const ext = f.name ? path.extname(f.name).slice(1).toUpperCase() : undefined;
+      discovered.push({
+        name: f.name,
+        url: f.url,
+        courseName,
+        sectionName,
+        savePath: currentPath,
+        size: f.size,
+        mimeType: f.mimeType,
+        fileType: ext || undefined,
+        status: 'pending',
+      });
     }
 
-    // Get subfolders
+    if (discovered.length > 0) {
+      log.debug(`    Discovered ${discovered.length} files in "${sectionName}"`);
+    }
+
+    // Recurse into subfolders
     const subfolders = await this.scraper.getSubfolders(currentPath);
 
-    // Process each subfolder recursively
     for (const subfolder of subfolders) {
       log.info(`    Entering subfolder: ${subfolder.name}`);
 
       const subfolderPath = path.join(currentPath, subfolder.path);
       ensureDirectory(subfolderPath);
 
-      // Navigate to subfolder
-      const page = this.auth.getPage();
-      await page.goto(subfolder.url, { waitUntil: 'networkidle' });
+      const ok = await this.scraper.navigateTo(subfolder.url);
+      if (!ok) {
+        log.warn(`    Skipping subfolder "${subfolder.name}" — navigation failed`);
+        continue;
+      }
 
-      // Recursively process
-      await this.processFolder(subfolderPath);
+      const subFiles = await this.discoverFolder(subfolderPath, courseName, sectionName);
+      discovered.push(...subFiles);
 
-      // Go back
+      // Navigate back after processing the subfolder
       await this.scraper.goBack();
     }
+
+    return discovered;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Download phase
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Fetch HEAD metadata (size / MIME type) for a list of discovered files.
+   * Delegates to FileDownloader.fetchMetadata().
+   */
+  async fetchFileMetadata(files: DiscoveredFile[]): Promise<DiscoveredFile[]> {
+    if (!this.downloader) {
+      throw new Error('Not initialized. Call initialize() first.');
+    }
+    return this.downloader.fetchMetadata(files);
   }
 
   /**
-   * Print download statistics
+   * Download only the files the user selected in the GUI.
    */
+  async downloadSelected(files: DiscoveredFile[]): Promise<void> {
+    if (!this.downloader) {
+      throw new Error('Not initialized. Call initialize() first.');
+    }
+
+    if (files.length === 0) {
+      log.warn('No files to download');
+      return;
+    }
+
+    await this.downloader.downloadSelected(files);
+    this.printStats();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Convenience wrapper (backward compatibility)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Discover all files then download all of them without any GUI selection.
+   * Kept for backward compatibility and scripted use.
+   */
+  async downloadAll(): Promise<void> {
+    const allFiles = await this.discoverAllFiles();
+
+    if (allFiles.length === 0) {
+      log.warn('No downloadable files found');
+      return;
+    }
+
+    log.info(`Processing ${allFiles.length} courses...`);
+
+    // Convert DiscoveredFile → DownloadableFile and download in one global batch
+    const downloadable: DownloadableFile[] = allFiles.map(f => ({
+      name: f.name,
+      url: f.url,
+      path: f.savePath,
+      size: f.size,
+      mimeType: f.mimeType,
+      status: 'pending' as const,
+    }));
+
+    if (!this.downloader) throw new Error('Not initialized');
+    await this.downloader.downloadFiles(downloadable);
+
+    this.printStats();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Statistics / cleanup
+  // ---------------------------------------------------------------------------
+
   private printStats(): void {
     if (!this.downloader) return;
 
@@ -166,9 +266,6 @@ export class WhiteboardDownloader extends EventEmitter {
     log.info('='.repeat(60));
   }
 
-  /**
-   * Cleanup and close connections
-   */
   async cleanup(): Promise<void> {
     await this.auth.close();
     this.db.close();

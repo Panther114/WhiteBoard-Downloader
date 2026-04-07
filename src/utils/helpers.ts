@@ -31,12 +31,24 @@ export function sanitizeFilename(name: string): string {
 }
 
 /**
- * Get unique file path by appending number if file exists
+ * In-memory set of paths currently reserved by an in-progress download.
+ * Because Node.js has a single-threaded event loop, the check + add
+ * operation is atomic at the JS level (no await between them), which
+ * eliminates the TOCTOU race that existed when only using fs.existsSync.
+ */
+const reservedPaths = new Set<string>();
+
+/**
+ * Return a unique file path under `dir` for `filename`, atomically
+ * reserving the chosen path so that no concurrent download can claim it.
+ * Call releaseReservedPath() once the download finishes (success or failure)
+ * so the reservation is cleaned up.
  */
 export function getUniqueFilePath(dir: string, filename: string): string {
   let filePath = path.join(dir, filename);
 
-  if (!fs.existsSync(filePath)) {
+  if (!fs.existsSync(filePath) && !reservedPaths.has(filePath)) {
+    reservedPaths.add(filePath);
     return filePath;
   }
 
@@ -44,12 +56,34 @@ export function getUniqueFilePath(dir: string, filename: string): string {
   const base = path.basename(filename, ext);
 
   let counter = 1;
-  while (fs.existsSync(filePath)) {
+  while (true) {
     filePath = path.join(dir, `${base} (${counter})${ext}`);
+    if (!fs.existsSync(filePath) && !reservedPaths.has(filePath)) {
+      reservedPaths.add(filePath);
+      return filePath;
+    }
     counter++;
   }
+}
 
-  return filePath;
+/**
+ * Release a path reservation made by getUniqueFilePath.
+ * Should be called after a download completes or fails.
+ */
+export function releaseReservedPath(filePath: string): void {
+  reservedPaths.delete(filePath);
+}
+
+/**
+ * Return a temporary file path for an in-progress download.
+ * Uses a random suffix so concurrent downloads of files with the same
+ * name don't collide on the temp file.
+ */
+export function getTmpFilePath(finalPath: string): string {
+  const dir = path.dirname(finalPath);
+  const base = path.basename(finalPath);
+  const random = Math.random().toString(36).slice(2, 10);
+  return path.join(dir, `.${base}.${random}.tmp`);
 }
 
 /**
