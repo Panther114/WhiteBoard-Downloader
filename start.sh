@@ -78,9 +78,8 @@ if [ ! -f ".env" ]; then
     fi
     echo ""
 else
-    # Check if BB_USERNAME is set to something other than the placeholder
-    if ! grep -qP "^BB_USERNAME=(?!your_g_number|\$).+" .env 2>/dev/null && \
-       ! grep -qE "^BB_USERNAME=[^$].+" .env 2>/dev/null; then
+    # Check if BB_USERNAME is set to something other than the placeholder or empty
+    if ! grep -qE "^BB_USERNAME=.{2,}" .env 2>/dev/null || grep -qE "^BB_USERNAME=your_g_number" .env 2>/dev/null; then
         echo "[INFO] Credentials not configured - launching setup wizard..."
         echo ""
         node dist/cli.js setup

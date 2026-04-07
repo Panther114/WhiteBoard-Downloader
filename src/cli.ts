@@ -21,7 +21,11 @@ program
   .version('2.0.0');
 
 // ---------------------------------------------------------------------------
-// Helper: write or update key=value pairs in a .env file
+// Helper: write or update key=value pairs in a .env file.
+// - If the file already exists, existing keys are updated in-place.
+// - If the file does not exist but .env.example does, the example is used as
+//   a template (placeholder values will be replaced).
+// - New keys not present in the file are appended at the end.
 // ---------------------------------------------------------------------------
 function writeEnvFile(envPath: string, values: Record<string, string>): void {
   let content = '';
@@ -198,7 +202,7 @@ program
         courseFilter: options.filter,
       });
 
-      console.log(chalk.gray(`Download directory: ${config.downloadDir}`));
+      console.log(chalk.gray(`\nDownload directory: ${config.downloadDir}`));
       console.log(chalk.gray(`Browser mode: ${config.headless ? 'headless' : 'visible'}`));
       if (config.courseFilter) {
         console.log(chalk.gray(`Course filter: ${config.courseFilter}`));
@@ -235,7 +239,7 @@ program
         totalFiles++;
         const bar = multibar.create(100, 0, {
           filename: truncate(file.name, 35),
-          downloadedStr: '…',
+          downloadedStr: '...',
           totalStr: '?',
         });
         bars.set(file.url, bar);
@@ -317,9 +321,10 @@ program
         console.log('\n' + chalk.bold('─'.repeat(55)));
         console.log(chalk.bold.cyan('  DOWNLOAD SUMMARY'));
         console.log(chalk.bold('─'.repeat(55)));
+        console.log(`  ${chalk.cyan('Total')}        ${chalk.white(String(totalFiles))}`);
         console.log(`  ${chalk.green('✓ Completed')}   ${chalk.white(String(completedFiles))}`);
         console.log(`  ${chalk.red('✗ Failed')}     ${chalk.white(String(failedFiles))}`);
-        console.log(`  ${chalk.gray('⏭ Skipped')}    ${chalk.white(String(skippedFiles))}`);
+        console.log(`  ${chalk.gray('  Skipped')}    ${chalk.white(String(skippedFiles))}`);
         console.log(chalk.bold('─'.repeat(55)));
         console.log(chalk.green.bold('\n✓ All done!\n'));
       } catch (error: any) {
@@ -381,7 +386,7 @@ program
 // ---------------------------------------------------------------------------
 function truncate(str: string, maxLen: number): string {
   if (!str) return '';
-  return str.length <= maxLen ? str.padEnd(maxLen) : str.substring(0, maxLen - 1) + '…';
+  return str.length <= maxLen ? str.padEnd(maxLen) : str.substring(0, maxLen - 1) + '>';
 }
 
 program.parse();

@@ -79,7 +79,8 @@ if not exist ".env" (
     )
     echo.
 ) else (
-    findstr /C:"BB_USERNAME=" .env | findstr /V /C:"BB_USERNAME=your_g_number" | findstr /V /C:"BB_USERNAME=$" >nul 2>nul
+    REM Check if BB_USERNAME has a real value (not the placeholder "your_g_number" and not empty)
+    findstr /C:"BB_USERNAME=" .env | findstr /V /C:"BB_USERNAME=your_g_number" | findstr /V /C:"BB_USERNAME=" >nul 2>nul
     if %errorlevel% neq 0 (
         echo [INFO] Credentials not configured - launching setup wizard...
         echo.
