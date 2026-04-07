@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.0] - 2026-04-07
+
+### Added
+- **Filesystem duplicate filter** — after fetching file metadata and before displaying the file-selection TUI, the downloads folder is scanned automatically. Files whose name (or sanitized name) already exist on disk are excluded from the list entirely. The count of skipped-on-disk files is shown in the post-run summary as "On disk".
+- **File list sorted by size** — within each course/section group in the interactive file-selection TUI, files are now ranked largest-to-smallest so the biggest downloads are immediately visible.
+
+### Changed
+- **Single aggregate progress bar** — the per-file `MultiBar` display has been replaced by a single `SingleBar` that shows: overall percentage, completed/total file count, cumulative bytes downloaded vs. expected total, live download speed (updated every second), and built-in ETA. Failed and skipped files are counted but do not block the overall progress.
+- **Simplified setup wizard** — the `setup` command no longer asks "Install Playwright browsers? (y/n)". Playwright Chromium is always installed automatically after saving credentials, removing one interactive prompt from the first-time flow.
+
+### Fixed
+- Single failed download correctly does not abort the overall batch. `pRetry` exhausts retries, the error is caught and logged, and `Promise.all` continues with the remaining files. (Pre-existing behaviour; confirmed correct — no code change required.)
+
 ## [2.1.0] - 2026-04-07
 
 ### Added
