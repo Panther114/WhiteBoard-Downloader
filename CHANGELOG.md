@@ -22,7 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `BlackboardScraper.getSubfolders()`: per-element loop replaced with a single `$$eval`.
 
 ### Fixed
-- `tsconfig.json`: updated `ignoreDeprecations` from `"5.0"` to `"5.0"` (keeping `moduleResolution: "node"`) to resolve TypeScript 5.9 build error (`TS5107`).
+- `tsconfig.json`: changed `moduleResolution` from `"node10"` to `"node"` (and kept `ignoreDeprecations: "5.0"`) to resolve TypeScript 5.9 build error (`TS5107`).
 
 ## [2.0.0] - 2026-04-06
 
