@@ -1,0 +1,371 @@
+================================================================================
+  WHITEBOARD DOWNLOADER v2.0 — HOW TO USE
+  A tool to download all your course materials from SHSID Blackboard China
+================================================================================
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  SECTION 0 — WHAT THIS TOOL DOES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Whiteboard Downloader automatically logs into SHSID Blackboard China
+(https://shs.blackboardchina.cn) using your G-Number and password, navigates
+all your courses, and downloads every file into an organised folder on your
+computer. It skips files you have already downloaded, so you can run it again
+at any time to pick up new uploads.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  SECTION 1 — FILES TO INCLUDE WHEN SHARING THIS TOOL WITH PEERS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+When zipping and sending the project to a peer, include ONLY these files and
+folders (everything else is either auto-generated or private):
+
+  REQUIRED
+  --------
+  src/                  (all TypeScript source code)
+  package.json          (dependency list and build scripts)
+  tsconfig.json         (TypeScript compiler settings)
+  .env.example          (template for credentials — NOT the real .env!)
+  start.bat             (Windows one-click launcher)
+  start.ps1             (Windows PowerShell one-click launcher)
+  start.sh              (macOS / Linux one-click launcher)
+
+  RECOMMENDED (helpful documentation)
+  ------------------------------------
+  README.md
+  LAUNCHER_GUIDE.md
+  how-to-use.txt        (this file)
+
+  DO NOT INCLUDE
+  --------------
+  node_modules/         (huge; each peer installs their own copy)
+  dist/                 (auto-generated during build; not needed in the zip)
+  .env                  (PRIVATE — contains YOUR credentials, never share this)
+  .git/                 (git history, not needed for usage)
+  legacy/               (old code, not relevant)
+  whiteboard.db         (your personal download history)
+  logs/                 (your personal log files)
+  downloads/            (your downloaded files)
+
+The minimum zip that works is:
+  src/ + package.json + tsconfig.json + .env.example + start.bat + start.sh
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  SECTION 2 — PREREQUISITES (BOTH WINDOWS AND MAC)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+You need ONLY ONE external program before you can use this tool: Node.js.
+Everything else is installed automatically.
+
+  STEP 1 — Install Node.js LTS
+  -----------------------------
+  Go to:  https://nodejs.org/
+  Click:  "LTS" (the left green button — Long Term Support)
+          *** Do NOT choose "Current" — it may be v24+ which is incompatible ***
+
+  Recommended versions: v20.x LTS  OR  v22.x LTS
+  Minimum version:      v18.x
+  Maximum version:      v23.x  (v24 and above are NOT compatible)
+
+  Windows:
+    - Download the .msi installer and run it.
+    - Accept all defaults. Make sure "Add to PATH" is checked.
+    - Restart any open terminal/command prompt windows after installing.
+
+  macOS:
+    - Download the .pkg installer and run it.
+    - Accept all defaults.
+    - Open Terminal and verify: node --version
+      You should see something like:  v20.19.0
+
+  STEP 2 — Verify Installation
+  -----------------------------
+  Open a terminal (Command Prompt on Windows, Terminal on macOS) and run:
+
+    node --version
+    npm --version
+
+  Both commands should print a version number without errors.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  SECTION 3 — FIRST-TIME SETUP (WINDOWS)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Do this once. After setup, everyday use is just double-clicking start.bat.
+
+  1. Unzip / place the project folder somewhere convenient.
+     Example:  C:\Users\YourName\WhiteBoard-Downloader\
+
+  2. Open Command Prompt in the project folder.
+     Easy way: hold Shift and right-click an empty area inside the folder,
+     then choose "Open PowerShell window here" or "Open command window here".
+
+  3. Install dependencies (downloads ~200 MB of packages):
+
+       npm install
+
+     Wait for it to finish. You should see a line like "added 400 packages".
+
+  4. Build the project (compiles TypeScript to JavaScript):
+
+       npm run build
+
+     Wait for it to finish. A new folder called "dist" will appear.
+
+  5. Install the Playwright browser (needed to automate Blackboard login):
+
+       npx playwright install chromium
+
+     This downloads Chromium (~150 MB). Only needed once.
+
+  6. Run the setup wizard to save your credentials:
+
+       npm run setup
+
+     The wizard will ask for:
+       - Your G-Number (e.g. G12345)
+       - Your Blackboard password
+       - Where to save downloads (press Enter to accept the default ./downloads)
+       - Whether to install Playwright browsers (press Enter for Yes if you
+         skipped step 5, otherwise type n)
+
+     Your credentials are saved to a file called ".env" in the project folder.
+     This file is private — never share it.
+
+  AFTER SETUP — RUNNING THE DOWNLOADER
+  ------------------------------------
+  Simply double-click  start.bat  in the project folder.
+  A black console window opens, logs in, and starts downloading.
+
+  Alternatively, from Command Prompt:
+    npm start download
+
+  Downloaded files appear in:   WhiteBoard-Downloader\downloads\
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  SECTION 4 — FIRST-TIME SETUP (macOS)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Do this once. After setup, everyday use is just double-clicking start.sh
+(or running ./start.sh in Terminal).
+
+  1. Unzip / place the project folder somewhere convenient.
+     Example:  /Users/YourName/WhiteBoard-Downloader/
+
+  2. Open Terminal (press Cmd+Space, type "Terminal", press Enter).
+
+  3. Navigate into the project folder:
+
+       cd /Users/YourName/WhiteBoard-Downloader
+
+     (Replace the path with wherever you put the folder.)
+
+  4. Install dependencies:
+
+       npm install
+
+     Wait for it to finish. You should see "added X packages".
+
+  5. Build the project:
+
+       npm run build
+
+     A new folder called "dist" will appear when done.
+
+  6. Install the Playwright browser:
+
+       npx playwright install chromium
+
+     Downloads Chromium (~150 MB). Only needed once.
+
+  7. Run the setup wizard:
+
+       npm run setup
+
+     The wizard will ask for:
+       - Your G-Number
+       - Your Blackboard password
+       - Download directory (press Enter for default)
+       - Install Playwright browsers (type n if you already did step 6)
+
+     Credentials are saved to a ".env" file. Never share this file.
+
+  8. Make the launcher executable (one-time):
+
+       chmod +x start.sh
+
+  AFTER SETUP — RUNNING THE DOWNLOADER
+  ------------------------------------
+  Option A — From Terminal:
+
+    ./start.sh
+
+  Option B — From Terminal using npm:
+
+    npm start download
+
+  Option C — Double-click start.sh in Finder.
+    If macOS says "cannot be opened because it is from an unidentified
+    developer", right-click the file, choose "Open", then click "Open"
+    in the dialog. This only needs to be done once.
+
+  Downloaded files appear in:  WhiteBoard-Downloader/downloads/
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  SECTION 5 — EVERYDAY USAGE (AFTER SETUP)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Once set up, using the downloader is simple:
+
+  Windows  →  Double-click  start.bat
+  macOS    →  Run  ./start.sh  in Terminal  (or double-click after chmod)
+
+The tool will:
+  1. Check your Node.js version
+  2. Build the project if it has not been built yet
+  3. Check for your saved credentials
+  4. Log into Blackboard automatically
+  5. Scan all your courses for files
+  6. Download new files (already-downloaded files are skipped)
+  7. Show a live progress bar and a summary when done
+
+Files are saved under:
+  downloads/
+    Course Name 1/
+      Folder/
+        file.pdf
+    Course Name 2/
+      ...
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  SECTION 6 — ADVANCED OPTIONS (OPTIONAL)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Download to a custom folder:
+  node dist/cli.js download --dir ./my-courses
+
+Filter to specific courses by name pattern (regex):
+  node dist/cli.js download --filter "^2025I.*"
+
+Watch the browser instead of running it invisibly:
+  node dist/cli.js download --headless false
+
+Show current configuration:
+  node dist/cli.js config
+
+Re-run the setup wizard to change credentials or settings:
+  npm run setup
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  SECTION 7 — TROUBLESHOOTING
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+PROBLEM: "Node.js is not installed or not in PATH"
+SOLUTION:
+  - Install Node.js from https://nodejs.org/ (choose LTS).
+  - After installing, close and reopen your terminal / Command Prompt.
+  - Run: node --version   to confirm it works.
+
+────────────────────────────────────────────────────────────────────────────────
+
+PROBLEM: "node_modules not found" when running start.bat / start.sh
+SOLUTION:
+  - Open a terminal in the project folder and run:  npm install
+  - Then try again.
+
+────────────────────────────────────────────────────────────────────────────────
+
+PROBLEM: Node.js v24+ warning / better-sqlite3 build errors
+SOLUTION:
+  - You installed a version of Node.js that is too new.
+  - Uninstall it and install Node.js v20 LTS or v22 LTS from https://nodejs.org/
+  - Run: npm install   again after switching.
+
+────────────────────────────────────────────────────────────────────────────────
+
+PROBLEM (Windows): PowerShell says "running scripts is disabled"
+SOLUTION:
+  - Open PowerShell as Administrator (search "PowerShell", right-click,
+    "Run as administrator").
+  - Run this command:
+      Set-ExecutionPolicy RemoteSigned -Scope CurrentUser
+  - Type Y and press Enter.
+  - Now use start.ps1 or start.bat normally.
+
+────────────────────────────────────────────────────────────────────────────────
+
+PROBLEM (macOS): "start.sh cannot be opened" security warning
+SOLUTION:
+  - Right-click (or Ctrl+click) start.sh in Finder.
+  - Choose "Open".
+  - Click "Open" in the dialog box that appears.
+  - This warning only appears once.
+
+────────────────────────────────────────────────────────────────────────────────
+
+PROBLEM: "Login failed" or wrong credentials error
+SOLUTION:
+  - Re-run the setup wizard to update your credentials:
+      npm run setup
+  - Make sure you are using your G-Number (e.g. G12345), not your email.
+  - Verify you can log in manually at: https://shs.blackboardchina.cn
+
+────────────────────────────────────────────────────────────────────────────────
+
+PROBLEM: Downloads stop mid-way or connection errors
+SOLUTION:
+  - Make sure you are on a stable network (avoid mobile hotspots).
+  - Simply run the downloader again — it automatically skips files that are
+    already fully downloaded and resumes from where it left off.
+
+────────────────────────────────────────────────────────────────────────────────
+
+PROBLEM: "Build failed" when running npm run build
+SOLUTION:
+  - Run: npm install   first to make sure all packages are installed.
+  - Then: npm run build
+  - If it still fails, check that your Node.js version is between v18 and v23.
+
+────────────────────────────────────────────────────────────────────────────────
+
+PROBLEM: Playwright browser not found / browser error
+SOLUTION:
+  - Run: npx playwright install chromium
+  - This re-downloads the Chromium browser used to automate Blackboard.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  SECTION 8 — QUICK REFERENCE CHEAT SHEET
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  First-time setup (run in order):
+    npm install
+    npm run build
+    npx playwright install chromium
+    npm run setup
+
+  Everyday use:
+    Windows  →  double-click start.bat
+    macOS    →  ./start.sh   (in Terminal)
+
+  Re-configure credentials:
+    npm run setup
+
+  Download with options:
+    node dist/cli.js download --dir ./my-folder --filter "^2025I"
+
+  Check your configuration:
+    node dist/cli.js config
+
+  Node.js download (LTS only!):
+    https://nodejs.org/
+
+================================================================================
