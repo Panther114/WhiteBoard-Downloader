@@ -11,7 +11,7 @@ import cliProgress from 'cli-progress';
 import { WhiteboardDownloader } from './index';
 import { getConfig } from './config';
 import { Config, Course, DiscoveredFile } from './types';
-import { formatBytes } from './utils/helpers';
+import { formatBytes, sanitizeFilename } from './utils/helpers';
 
 // Separator is available at runtime in inquirer v8 as a property on the module.
 // @types/inquirer@9 ships types for inquirer@9 while the runtime is inquirer@8,
@@ -101,12 +101,6 @@ program
           message: 'Download directory:',
           default: existingDownloadDir,
         },
-        {
-          type: 'confirm',
-          name: 'installBrowsers',
-          message: 'Install Playwright browsers now? (required for first-time setup)',
-          default: true,
-        },
       ]);
 
       // Write .env
@@ -118,15 +112,13 @@ program
 
       console.log(chalk.green(`\n✓ Credentials saved to ${envPath}`));
 
-      // Install Playwright browsers if requested
-      if (answers.installBrowsers) {
-        const browserSpinner = ora('Installing Playwright browsers...').start();
-        try {
-          execSync('npx playwright install chromium', { stdio: 'pipe' });
-          browserSpinner.succeed('Playwright browsers installed');
-        } catch {
-          browserSpinner.warn('Browser installation failed — run: npx playwright install chromium');
-        }
+      // Always install Playwright browsers during setup
+      const browserSpinner = ora('Installing Playwright browsers...').start();
+      try {
+        execSync('npx playwright install chromium', { stdio: 'pipe' });
+        browserSpinner.succeed('Playwright browsers installed');
+      } catch {
+        browserSpinner.warn('Browser installation failed — run: npx playwright install chromium');
       }
 
       console.log(chalk.bold.green('\n✅ Setup complete!\n'));
@@ -220,89 +212,11 @@ program
 
       const wbDownloader = new WhiteboardDownloader(config);
 
-      // -----------------------------------------------------------------------
-      // Progress multi-bar (shown during the actual download phase)
-      // -----------------------------------------------------------------------
-      const multibar = new cliProgress.MultiBar(
-        {
-          clearOnComplete: false,
-          hideCursor: true,
-          autopadding: true,
-          format: ' {bar} {percentage}% | {filename} | {downloadedStr} / {totalStr}',
-        },
-        cliProgress.Presets.shades_classic
-      );
-
-      const bars = new Map<string, cliProgress.SingleBar>();
-      let totalFiles = 0;
+      // State for aggregate progress bar (initialised after file selection)
+      let singleBar: cliProgress.SingleBar | null = null;
       let completedFiles = 0;
       let failedFiles = 0;
       let skippedFiles = 0;
-
-      wbDownloader.on('download:start', (file: { url: string; name: string }) => {
-        totalFiles++;
-        const bar = multibar.create(100, 0, {
-          filename: truncate(file.name, 35),
-          downloadedStr: '...',
-          totalStr: '?',
-        });
-        bars.set(file.url, bar);
-      });
-
-      wbDownloader.on(
-        'download:progress',
-        (data: { url: string; filename: string; downloaded: number; total: number }) => {
-          const bar = bars.get(data.url);
-          if (!bar) return;
-          if (data.total > 0) {
-            const pct = Math.min(Math.round((data.downloaded / data.total) * 100), 100);
-            bar.update(pct, {
-              filename: truncate(data.filename, 35),
-              downloadedStr: formatBytes(data.downloaded),
-              totalStr: formatBytes(data.total),
-            });
-          } else {
-            bar.update(50, {
-              filename: truncate(data.filename, 35),
-              downloadedStr: formatBytes(data.downloaded),
-              totalStr: '?',
-            });
-          }
-        }
-      );
-
-      wbDownloader.on(
-        'download:complete',
-        (data: { url: string; filename: string; size: number }) => {
-          completedFiles++;
-          const bar = bars.get(data.url);
-          if (bar) {
-            bar.update(100, {
-              filename: truncate(data.filename, 35),
-              downloadedStr: formatBytes(data.size),
-              totalStr: formatBytes(data.size),
-            });
-            bar.stop();
-            bars.delete(data.url);
-          }
-        }
-      );
-
-      wbDownloader.on(
-        'download:error',
-        (data: { url: string; filename: string; error: string }) => {
-          failedFiles++;
-          const bar = bars.get(data.url);
-          if (bar) {
-            bar.stop();
-            bars.delete(data.url);
-          }
-        }
-      );
-
-      wbDownloader.on('download:skip', (_data: { url: string; filename: string }) => {
-        skippedFiles++;
-      });
 
       // -----------------------------------------------------------------------
 
@@ -361,18 +275,31 @@ program
           `Metadata fetched (${withSize} of ${enrichedFiles.length} files have known size)`
         );
 
+        // Phase 5.5: Filter files already present on disk (duplicate prevention)
+        const { files: undownloadedFiles, skippedOnDisk } = filterAlreadyDownloaded(enrichedFiles);
+        if (skippedOnDisk > 0) {
+          console.log(
+            chalk.gray(`   ↳ Skipped ${skippedOnDisk} file(s) already present in downloads folder`)
+          );
+        }
+
+        if (undownloadedFiles.length === 0) {
+          console.log(chalk.green('\n✓ All files are already downloaded.\n'));
+          return;
+        }
+
         let filesToDownload: DiscoveredFile[];
 
         if (options.all) {
-          // --all flag: skip file selection GUI, download everything
-          filesToDownload = enrichedFiles;
+          // --all flag: skip file selection GUI, download everything not already on disk
+          filesToDownload = undownloadedFiles;
           console.log(
             chalk.cyan(`\n📥 Downloading all ${filesToDownload.length} files...\n`)
           );
         } else {
           // Phase 6: GUI file selection
           console.log();
-          filesToDownload = await selectFilesInteractively(enrichedFiles);
+          filesToDownload = await selectFilesInteractively(undownloadedFiles);
 
           if (filesToDownload.length === 0) {
             console.log(chalk.yellow('\nNo files selected. Exiting.\n'));
@@ -383,6 +310,98 @@ program
             chalk.cyan(`\n📥 Downloading ${filesToDownload.length} selected files...\n`)
           );
         }
+
+        // -----------------------------------------------------------------------
+        // Set up single aggregate progress bar
+        // -----------------------------------------------------------------------
+        const totalExpectedBytes = filesToDownload.reduce((sum, f) => sum + (f.size ?? 0), 0);
+        const barTotal = filesToDownload.length;
+        const totalBytesLabel = totalExpectedBytes > 0 ? formatBytes(totalExpectedBytes) : '?';
+
+        singleBar = new cliProgress.SingleBar(
+          {
+            clearOnComplete: false,
+            hideCursor: true,
+            format:
+              ' {bar} {percentage}% | {completedFiles}/{totalFilesCount} files | {downloadedStr}/{totalStr} | {speedStr} | ETA {eta_formatted}',
+          },
+          cliProgress.Presets.shades_classic
+        );
+
+        const bar = singleBar;
+        const fileDownloaded = new Map<string, number>();
+        let totalDownloadedBytes = 0;
+        let speedWindowStart = Date.now();
+        let speedWindowBytes = 0;
+        let currentSpeedBps = 0;
+
+        const barPayload = () => ({
+          completedFiles: completedFiles + skippedFiles,
+          totalFilesCount: barTotal,
+          downloadedStr: formatBytes(totalDownloadedBytes),
+          totalStr: totalBytesLabel,
+          speedStr: currentSpeedBps > 0 ? `${formatBytes(Math.round(currentSpeedBps))}/s` : '...',
+        });
+
+        wbDownloader.on('download:start', (file: { url: string; name: string }) => {
+          fileDownloaded.set(file.url, 0);
+        });
+
+        wbDownloader.on(
+          'download:progress',
+          (data: { url: string; filename: string; downloaded: number; total: number }) => {
+            const prev = fileDownloaded.get(data.url) ?? 0;
+            const delta = Math.max(0, data.downloaded - prev);
+            fileDownloaded.set(data.url, data.downloaded);
+            totalDownloadedBytes += delta;
+            speedWindowBytes += delta;
+
+            const now = Date.now();
+            const elapsed = now - speedWindowStart;
+            if (elapsed >= 1000) {
+              currentSpeedBps = speedWindowBytes / (elapsed / 1000);
+              speedWindowStart = now;
+              speedWindowBytes = 0;
+            }
+
+            bar.update(completedFiles + skippedFiles, barPayload());
+          }
+        );
+
+        wbDownloader.on(
+          'download:complete',
+          (data: { url: string; filename: string; size: number }) => {
+            completedFiles++;
+            const prev = fileDownloaded.get(data.url) ?? 0;
+            const delta = Math.max(0, data.size - prev);
+            totalDownloadedBytes += delta;
+            fileDownloaded.set(data.url, data.size);
+            bar.update(completedFiles + skippedFiles, barPayload());
+          }
+        );
+
+        wbDownloader.on(
+          'download:error',
+          (_data: { url: string; filename: string; error: string }) => {
+            failedFiles++;
+            bar.update(completedFiles + skippedFiles, barPayload());
+          }
+        );
+
+        wbDownloader.on('download:skip', (_data: { url: string; filename: string }) => {
+          skippedFiles++;
+          bar.update(completedFiles + skippedFiles, barPayload());
+        });
+
+        singleBar.start(barTotal, 0, {
+          completedFiles: 0,
+          totalFilesCount: barTotal,
+          downloadedStr: '0 B',
+          totalStr: totalBytesLabel,
+          speedStr: '...',
+        });
+
+        // -----------------------------------------------------------------------
 
         // Phase 7: Sort by size (small files first) so quick downloads
         // complete immediately while large files run in parallel.
@@ -396,20 +415,23 @@ program
         // Phase 8: Download selected files
         await wbDownloader.downloadSelected(filesToDownload);
 
-        multibar.stop();
+        singleBar.stop();
 
         // Summary
         console.log('\n' + chalk.bold('─'.repeat(55)));
         console.log(chalk.bold.cyan('  DOWNLOAD SUMMARY'));
         console.log(chalk.bold('─'.repeat(55)));
-        console.log(`  ${chalk.cyan('Total')}        ${chalk.white(String(totalFiles))}`);
+        console.log(`  ${chalk.cyan('Total')}        ${chalk.white(String(filesToDownload.length))}`);
         console.log(`  ${chalk.green('✓ Completed')}   ${chalk.white(String(completedFiles))}`);
         console.log(`  ${chalk.red('✗ Failed')}     ${chalk.white(String(failedFiles))}`);
         console.log(`  ${chalk.gray('  Skipped')}    ${chalk.white(String(skippedFiles))}`);
+        if (skippedOnDisk > 0) {
+          console.log(`  ${chalk.gray('  On disk')}    ${chalk.white(String(skippedOnDisk))}`);
+        }
         console.log(chalk.bold('─'.repeat(55)));
         console.log(chalk.green.bold('\n✓ All done!\n'));
       } catch (error: any) {
-        multibar.stop();
+        if (singleBar) singleBar.stop();
         spinner.fail('Download failed');
         console.error(chalk.red(`\nError: ${error.message}\n`));
         process.exit(1);
@@ -461,6 +483,37 @@ program
       process.exit(1);
     }
   });
+
+// ---------------------------------------------------------------------------
+// Filesystem duplicate filter
+// ---------------------------------------------------------------------------
+
+/**
+ * Remove files whose sanitized name already exists in the target directory on
+ * disk.  This keeps the TUI clean by only showing files that still need to be
+ * downloaded.
+ */
+function filterAlreadyDownloaded(
+  files: DiscoveredFile[]
+): { files: DiscoveredFile[]; skippedOnDisk: number } {
+  const result: DiscoveredFile[] = [];
+  let skippedOnDisk = 0;
+
+  for (const file of files) {
+    const sanitized = sanitizeFilename(file.name);
+    const existsByOriginal = fs.existsSync(path.join(file.savePath, file.name));
+    const existsBySanitized =
+      sanitized !== file.name && fs.existsSync(path.join(file.savePath, sanitized));
+
+    if (existsByOriginal || existsBySanitized) {
+      skippedOnDisk++;
+    } else {
+      result.push(file);
+    }
+  }
+
+  return { files: result, skippedOnDisk };
+}
 
 // ---------------------------------------------------------------------------
 // Interactive course selection GUI
@@ -526,7 +579,15 @@ async function selectFilesInteractively(files: DiscoveredFile[]): Promise<Discov
   for (const [groupName, groupFiles] of groups) {
     choices.push(new InquirerSeparator(`\n  ── ${groupName} ──`));
 
-    for (const file of groupFiles) {
+    // Sort largest first within each group so users can easily spot big files
+    const sortedGroupFiles = [...groupFiles].sort((a, b) => {
+      if (a.size === undefined && b.size === undefined) return 0;
+      if (a.size === undefined) return 1;
+      if (b.size === undefined) return -1;
+      return b.size - a.size;
+    });
+
+    for (const file of sortedGroupFiles) {
       const typeLabel = (
         file.fileType ||
         path.extname(file.name).slice(1) ||
@@ -573,14 +634,6 @@ async function selectFilesInteractively(files: DiscoveredFile[]): Promise<Discov
   ]);
 
   return (answers.selectedFiles as DiscoveredFile[]) || [];
-}
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-function truncate(str: string, maxLen: number): string {
-  if (!str) return '';
-  return str.length <= maxLen ? str.padEnd(maxLen) : str.substring(0, maxLen - 1) + '>';
 }
 
 program.parse();

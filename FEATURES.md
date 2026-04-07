@@ -30,7 +30,7 @@ This document outlines all features implemented in the Whiteboard Downloader v2.
 ### User Experience
 - [x] **Beautiful CLI Interface** - Colored output with Inquirer and Chalk
 - [x] **Progress Indicators** - Visual feedback with Ora spinners
-- [x] **Download Progress GUI** - Multi-bar per-file progress display with file names, sizes, and percentages (cli-progress)
+- [x] **Download Progress GUI** - Single aggregate progress bar showing total downloaded / total expected bytes, current download speed, ETA, and completed/total file count (cli-progress)
 - [x] **Course Selection GUI** - Interactive checkbox shown before scraping; all courses pre-selected, user unchecks unwanted ones; `--all` skips it
 - [x] **Comprehensive Logging** - Winston-based logging with file and console output
 - [x] **Debug Mode** - Detailed logging for troubleshooting (set `LOG_LEVEL=debug`)
@@ -73,7 +73,8 @@ This document outlines all features implemented in the Whiteboard Downloader v2.
 ### Potential Future Enhancements
 - [ ] **Full Desktop GUI** - Electron-based desktop application
 - [ ] **Multi-Account Support** - Download from multiple accounts
-- [x] **Selective Downloads** - Choose specific courses and files to download (course selection GUI + file selection GUI)
+- [x] **Duplicate File Prevention** - Filesystem scan before file-selection TUI hides already-downloaded files; only undownloaded files are listed
+- [x] **File List Sorted by Size** - Within each course/section group in the file-selection TUI, files are ranked largest-to-smallest for easy identification
 - [ ] **Incremental Backups** - Only download new/modified files
 - [ ] **Cloud Storage Integration** - Upload downloads to Google Drive, Dropbox, etc.
 - [ ] **Email Notifications** - Notify when downloads complete
