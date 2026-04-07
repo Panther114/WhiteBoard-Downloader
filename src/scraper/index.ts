@@ -3,6 +3,9 @@ import { Config, Course, ContentFolder, DownloadableFile, SidebarLink } from '..
 import { log } from '../utils/logger';
 import { sanitizeFilename, extractFilenameFromUrl } from '../utils/helpers';
 
+/** Milliseconds to wait for #content_listContainer before giving up on a page. */
+const CONTENT_CONTAINER_TIMEOUT_MS = 12_000;
+
 /** URL patterns that indicate page navigation, not downloadable content. */
 const NAV_HREF_PATTERNS = [
   'listContent.jsp',
@@ -229,7 +232,7 @@ export class BlackboardScraper {
 
     try {
       // Wait longer than the previous 2 s so slow LMS pages don't miss files
-      await this.page.waitForSelector('#content_listContainer', { timeout: 12000 });
+      await this.page.waitForSelector('#content_listContainer', { timeout: CONTENT_CONTAINER_TIMEOUT_MS });
     } catch {
       log.debug('No #content_listContainer found on current page — skipping file scan');
       return files;

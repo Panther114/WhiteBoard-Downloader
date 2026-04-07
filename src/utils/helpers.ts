@@ -32,9 +32,16 @@ export function sanitizeFilename(name: string): string {
 
 /**
  * In-memory set of paths currently reserved by an in-progress download.
- * Because Node.js has a single-threaded event loop, the check + add
- * operation is atomic at the JS level (no await between them), which
- * eliminates the TOCTOU race that existed when only using fs.existsSync.
+ *
+ * Correctness guarantee: `getUniqueFilePath` is a synchronous function — it
+ * contains no `await` and therefore runs entirely within a single event-loop
+ * tick.  Because the Node.js event loop is single-threaded, no other code can
+ * execute between the `fs.existsSync` check and the `Set.add` call, making the
+ * reservation atomic.  The caller must NOT `await` between calling this
+ * function and opening the file; the design in FileDownloader satisfies this
+ * because the reserved path is only used as the rename target after the .tmp
+ * write completes, and no other code can call `getUniqueFilePath` for the same
+ * path in the meantime.
  */
 const reservedPaths = new Set<string>();
 

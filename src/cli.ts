@@ -14,7 +14,9 @@ import { Config, DiscoveredFile } from './types';
 import { formatBytes } from './utils/helpers';
 
 // Separator is available at runtime in inquirer v8 as a property on the module.
-// We access it via the default export to avoid @types/inquirer version mismatch.
+// @types/inquirer@9 ships types for inquirer@9 while the runtime is inquirer@8,
+// so there is an unavoidable version mismatch.  We bridge it with a minimal cast
+// that preserves the constructor signature we actually use.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const InquirerSeparator: new (line?: string) => unknown = (inquirer as any).Separator;
 
@@ -451,6 +453,9 @@ async function selectFilesInteractively(files: DiscoveredFile[]): Promise<Discov
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const choices: any[] = [];
 
+  /** Column width for the size label (e.g. "10.23 MB") — wide enough for GB values. */
+  const SIZE_LABEL_WIDTH = 9;
+
   for (const [groupName, groupFiles] of groups) {
     choices.push(new InquirerSeparator(`\n  ── ${groupName} ──`));
 
@@ -462,7 +467,7 @@ async function selectFilesInteractively(files: DiscoveredFile[]): Promise<Discov
       )
         .toUpperCase()
         .padEnd(5);
-      const sizeLabel = file.size !== undefined ? formatBytes(file.size).padStart(9) : '      ?'.padStart(9);
+      const sizeLabel = file.size !== undefined ? formatBytes(file.size).padStart(SIZE_LABEL_WIDTH) : '      ?'.padStart(SIZE_LABEL_WIDTH);
 
       choices.push({
         name: `${typeLabel}  ${sizeLabel}  ${file.name}`,

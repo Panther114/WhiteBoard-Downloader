@@ -24,6 +24,12 @@ import { DownloadDatabase } from '../database';
 /** Milliseconds without data before a download stream is considered stalled. */
 const INACTIVITY_TIMEOUT_MS = 30_000;
 
+/** Timeout for HEAD requests used to fetch file metadata. */
+const HEAD_REQUEST_TIMEOUT_MS = 10_000;
+
+/** The generic-binary MIME extension returned by mime-types for unrecognised content. */
+const GENERIC_BINARY_EXTENSION = 'bin';
+
 export class FileDownloader extends EventEmitter {
   private axios: AxiosInstance;
   private config: Config;
@@ -71,7 +77,7 @@ export class FileDownloader extends EventEmitter {
       files.map(file =>
         headLimit(async (): Promise<DiscoveredFile> => {
           try {
-            const response = await this.axios.head(file.url, { timeout: 10_000 });
+            const response = await this.axios.head(file.url, { timeout: HEAD_REQUEST_TIMEOUT_MS });
             const rawLength = response.headers['content-length'];
             const size = rawLength ? parseInt(rawLength, 10) : undefined;
             const rawType = response.headers['content-type'] || '';
@@ -79,7 +85,7 @@ export class FileDownloader extends EventEmitter {
             const extFromMime = mimeType ? mime.extension(mimeType) : false;
             const extFromName = path.extname(file.name).slice(1);
             const fileType = (
-              (extFromMime && extFromMime !== 'bin' ? extFromMime : extFromName) || undefined
+              (extFromMime && extFromMime !== GENERIC_BINARY_EXTENSION ? extFromMime : extFromName) || undefined
             )?.toUpperCase();
 
             return { ...file, size: size || undefined, mimeType, fileType };
