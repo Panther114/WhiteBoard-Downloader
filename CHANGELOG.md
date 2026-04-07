@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0] - 2026-04-07
+
+### Added
+- **Course Selection GUI** — after logging in, all discovered course links are shown in an interactive Inquirer checkbox list (all pre-selected). The user unchecks unwanted courses before any scraping begins. The `--all` flag skips this GUI along with the file-selection GUI.
+- `WhiteboardDownloader.getCourses()` public method — exposes the course list so the CLI can present it before starting the full discovery pass.
+- `WhiteboardDownloader.discoverAllFiles(courses?)` now accepts an optional pre-filtered `Course[]` array; when omitted the method falls back to fetching all courses (backward-compatible).
+
+### Changed
+- `discoverAllFiles()` now accepts an optional `courses` parameter to skip re-fetching the course list when the caller already has it.
+
+### Performance
+- `BlackboardScraper.getCourses()`: replaced per-element `getAttribute()` loop with a single `page.$$eval()` call — O(N) Playwright RPC round-trips reduced to O(1).
+- `BlackboardScraper.getSidebarLinks()`: same batch-eval optimisation; also avoids a nested `.locator('span').first()` call per element.
+- `BlackboardScraper.getDownloadableFiles()`: seven separate locator passes consolidated into one `$$eval` that extracts `href`, `target`, `textContent`, `.attachments` membership, and `.details` membership for every anchor in `#content_listContainer` simultaneously.
+- `BlackboardScraper.getSubfolders()`: per-element loop replaced with a single `$$eval`.
+
+### Fixed
+- `tsconfig.json`: changed `moduleResolution` from `"node10"` to `"node"` (and kept `ignoreDeprecations: "5.0"`) to resolve TypeScript 5.9 build error (`TS5107`).
+
 ## [2.0.0] - 2026-04-06
 
 ### Added

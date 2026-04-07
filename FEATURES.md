@@ -31,6 +31,7 @@ This document outlines all features implemented in the Whiteboard Downloader v2.
 - [x] **Beautiful CLI Interface** - Colored output with Inquirer and Chalk
 - [x] **Progress Indicators** - Visual feedback with Ora spinners
 - [x] **Download Progress GUI** - Multi-bar per-file progress display with file names, sizes, and percentages (cli-progress)
+- [x] **Course Selection GUI** - Interactive checkbox shown before scraping; all courses pre-selected, user unchecks unwanted ones; `--all` skips it
 - [x] **Comprehensive Logging** - Winston-based logging with file and console output
 - [x] **Debug Mode** - Detailed logging for troubleshooting (set `LOG_LEVEL=debug`)
 - [x] **One-Click Launchers** - Double-click scripts for Windows, macOS, and Linux
@@ -47,6 +48,7 @@ This document outlines all features implemented in the Whiteboard Downloader v2.
 - [x] **Input Validation** - Zod schema validation for configuration
 - [x] **File Path Sanitization** - Prevents directory traversal and invalid filenames
 - [x] **Error Handling** - Comprehensive try/catch blocks with meaningful error messages
+- [x] **Batch DOM Queries** - `$$eval` replaces per-element `getAttribute()` loops, cutting Playwright RPC round-trips from O(N) to O(1) per page scan
 
 ### Platform Support
 - [x] **Cross-Platform** - Windows, macOS, and Linux support
@@ -71,7 +73,7 @@ This document outlines all features implemented in the Whiteboard Downloader v2.
 ### Potential Future Enhancements
 - [ ] **Full Desktop GUI** - Electron-based desktop application
 - [ ] **Multi-Account Support** - Download from multiple accounts
-- [ ] **Selective Downloads** - Choose specific files/folders to download
+- [x] **Selective Downloads** - Choose specific courses and files to download (course selection GUI + file selection GUI)
 - [ ] **Incremental Backups** - Only download new/modified files
 - [ ] **Cloud Storage Integration** - Upload downloads to Google Drive, Dropbox, etc.
 - [ ] **Email Notifications** - Notify when downloads complete

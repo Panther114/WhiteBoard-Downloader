@@ -75,18 +75,23 @@ export class BlackboardScraper {
     const PRIMARY_SELECTOR = 'ul.portletList-img.courseListing.coursefakeclass li a';
     const FALLBACK_SELECTOR = 'ul.courseListing li a';
 
-    let courseElements: import('playwright').Locator[] = [];
+    type RawCourse = { href: string; text: string };
+    let rawCourses: RawCourse[] = [];
 
     try {
       await this.page.waitForSelector(PRIMARY_SELECTOR, { timeout: 10000 });
-      courseElements = await this.page.locator(PRIMARY_SELECTOR).all();
-      log.debug(`Found ${courseElements.length} course elements (primary selector)`);
+      rawCourses = await this.page.$$eval(PRIMARY_SELECTOR, els =>
+        els.map(el => ({ href: el.getAttribute('href') ?? '', text: el.textContent ?? '' }))
+      );
+      log.debug(`Found ${rawCourses.length} course elements (primary selector)`);
     } catch {
       log.warn('Primary course selector timed out — trying fallback selector');
       try {
         await this.page.waitForSelector(FALLBACK_SELECTOR, { timeout: 5000 });
-        courseElements = await this.page.locator(FALLBACK_SELECTOR).all();
-        log.debug(`Found ${courseElements.length} course elements (fallback selector)`);
+        rawCourses = await this.page.$$eval(FALLBACK_SELECTOR, els =>
+          els.map(el => ({ href: el.getAttribute('href') ?? '', text: el.textContent ?? '' }))
+        );
+        log.debug(`Found ${rawCourses.length} course elements (fallback selector)`);
       } catch {
         log.error('Could not find any course listing on the page');
         return [];
@@ -102,10 +107,7 @@ export class BlackboardScraper {
 
     const courses: Course[] = [];
 
-    for (const element of courseElements) {
-      const href = await element.getAttribute('href');
-      const text = await element.textContent();
-
+    for (const { href, text } of rawCourses) {
       if (!href || !text) continue;
 
       const courseName = text.trim().replace(/[\/\\]/g, '_');
@@ -154,15 +156,17 @@ export class BlackboardScraper {
 
     await this.page.waitForSelector('#courseMenuPalette_contents li a', { timeout: 10000 });
 
-    const linkElements = await this.page.locator('#courseMenuPalette_contents li a').all();
+    const rawLinks = await this.page.$$eval('#courseMenuPalette_contents li a', els =>
+      els.map(el => ({
+        href: el.getAttribute('href') ?? '',
+        title: el.querySelector('span')?.getAttribute('title') ?? '',
+      }))
+    );
+    log.debug(`Found ${rawLinks.length} sidebar link elements`);
+
     const links: SidebarLink[] = [];
-    log.debug(`Found ${linkElements.length} sidebar link elements`);
 
-    for (const element of linkElements) {
-      const href = await element.getAttribute('href');
-      const titleElement = await element.locator('span').first();
-      const title = await titleElement.getAttribute('title');
-
+    for (const { href, title } of rawLinks) {
       if (!href || !title) continue;
 
       log.debug(`Processing sidebar link: "${title}" href="${href}"`);
@@ -196,8 +200,14 @@ export class BlackboardScraper {
   /**
    * Get downloadable files from the current page.
    *
-   * Uses multiple selectors to capture all Blackboard file patterns:
-   *   1. target="_blank" links (original behaviour)
+   * A single `$$eval` call gathers every `<a href>` inside
+   * `#content_listContainer` — capturing `href`, display text, `target`,
+   * and whether the element sits inside `.attachments` or `.details`.
+   * All filtering and deduplication then happen in TypeScript, cutting the
+   * number of Playwright RPC round-trips from O(N) to O(1).
+   *
+   * Recognised patterns (unchanged from previous implementation):
+   *   1. target="_blank" links
    *   2. /bbcswebdav/ direct storage links
    *   3. content/file endpoint links
    *   4. execute/content endpoint links
@@ -212,79 +222,48 @@ export class BlackboardScraper {
     const files: DownloadableFile[] = [];
     log.debug(`Scanning for downloadable files on page: ${this.page.url()}`);
 
-    const isNavHref = (href: string): boolean =>
-      NAV_HREF_PATTERNS.some(p => href.includes(p));
-
-    const addLink = async (element: import('playwright').Locator): Promise<void> => {
-      const href = await element.getAttribute('href');
-      if (!href || isNavHref(href)) return;
-
-      const fullUrl = href.startsWith('http') ? href : `${this.config.baseUrl}${href}`;
-      if (seenUrls.has(fullUrl)) return;
-      seenUrls.add(fullUrl);
-
-      const text = await element.textContent();
-      const displayName = text?.trim() || extractFilenameFromUrl(fullUrl);
-
-      log.debug(`Found downloadable file: "${displayName}" -> ${fullUrl}`);
-      files.push({ name: displayName, url: fullUrl, path: basePath, status: 'pending' });
-    };
-
     try {
-      // Wait longer than the previous 2 s so slow LMS pages don't miss files
       await this.page.waitForSelector('#content_listContainer', { timeout: CONTENT_CONTAINER_TIMEOUT_MS });
     } catch {
       log.debug('No #content_listContainer found on current page — skipping file scan');
       return files;
     }
 
-    // 1. Original: explicit new-tab links
-    for (const el of await this.page.locator('#content_listContainer a[target="_blank"]').all()) {
-      await addLink(el);
-    }
+    // Gather all anchor data in a single JS evaluation.
+    const rawLinks = await this.page.$$eval('#content_listContainer a[href]', els =>
+      els.map(el => ({
+        href: el.getAttribute('href') ?? '',
+        text: el.textContent ?? '',
+        target: el.getAttribute('target') ?? '',
+        inAttachments: el.closest('.attachments') !== null,
+        inDetails: el.closest('.details') !== null,
+      }))
+    );
 
-    // 2. Blackboard file-storage (bbcswebdav) — no target="_blank"
-    for (const el of await this.page
-      .locator('#content_listContainer a[href*="/bbcswebdav/"]')
-      .all()) {
-      await addLink(el);
-    }
+    const isNavHref = (href: string): boolean =>
+      NAV_HREF_PATTERNS.some(p => href.includes(p));
 
-    // 3. Blackboard content/file API endpoint
-    for (const el of await this.page
-      .locator('#content_listContainer a[href*="content/file"]')
-      .all()) {
-      await addLink(el);
-    }
+    for (const { href, text, target, inAttachments, inDetails } of rawLinks) {
+      if (!href || isNavHref(href)) continue;
 
-    // 4. execute/content endpoint
-    for (const el of await this.page
-      .locator('#content_listContainer a[href*="execute/content"]')
-      .all()) {
-      await addLink(el);
-    }
+      // Check whether this link matches any of the 7 download patterns.
+      const isBlank = target === '_blank';
+      const isBbcs = href.includes('/bbcswebdav/');
+      const isContentFile = href.includes('content/file');
+      const isExecuteContent = href.includes('execute/content');
+      const isExtHeuristic = FILE_EXT_RE.test(href);
 
-    // 5. Attachment sub-lists
-    for (const el of await this.page
-      .locator('#content_listContainer .attachments a')
-      .all()) {
-      await addLink(el);
-    }
-
-    // 6. .details sub-elements
-    for (const el of await this.page
-      .locator('#content_listContainer .details a')
-      .all()) {
-      await addLink(el);
-    }
-
-    // 7. Extension heuristic: any remaining link whose href ends with a known
-    //    file extension that hasn't been captured yet.
-    for (const el of await this.page.locator('#content_listContainer a[href]').all()) {
-      const href = await el.getAttribute('href');
-      if (href && FILE_EXT_RE.test(href)) {
-        await addLink(el);
+      if (!isBlank && !isBbcs && !isContentFile && !isExecuteContent && !inAttachments && !inDetails && !isExtHeuristic) {
+        continue;
       }
+
+      const fullUrl = href.startsWith('http') ? href : `${this.config.baseUrl}${href}`;
+      if (seenUrls.has(fullUrl)) continue;
+      seenUrls.add(fullUrl);
+
+      const displayName = text.trim() || extractFilenameFromUrl(fullUrl);
+      log.debug(`Found downloadable file: "${displayName}" -> ${fullUrl}`);
+      files.push({ name: displayName, url: fullUrl, path: basePath, status: 'pending' });
     }
 
     log.info(`Found ${files.length} downloadable files in current folder`);
@@ -297,6 +276,7 @@ export class BlackboardScraper {
 
   /**
    * Get subfolders from the current page, deduplicated by URL.
+   * Uses a single `$$eval` call to fetch all candidate links in one round-trip.
    */
   async getSubfolders(parentPath: string): Promise<ContentFolder[]> {
     const folders: ContentFolder[] = [];
@@ -304,13 +284,12 @@ export class BlackboardScraper {
     log.debug(`Scanning for subfolders on page: ${this.page.url()}`);
 
     try {
-      const folderElements = await this.page.locator('div.item.clearfix a').all();
-      log.debug(`Found ${folderElements.length} potential folder elements`);
+      const rawLinks = await this.page.$$eval('div.item.clearfix a', els =>
+        els.map(el => ({ href: el.getAttribute('href') ?? '', text: el.textContent ?? '' }))
+      );
+      log.debug(`Found ${rawLinks.length} potential folder elements`);
 
-      for (const element of folderElements) {
-        const href = await element.getAttribute('href');
-        const text = await element.textContent();
-
+      for (const { href, text } of rawLinks) {
         if (!href || !text || !href.includes('listContent.jsp')) continue;
 
         const cleanHref = href.trim();

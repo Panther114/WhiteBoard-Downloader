@@ -10,7 +10,7 @@ import { execSync } from 'child_process';
 import cliProgress from 'cli-progress';
 import { WhiteboardDownloader } from './index';
 import { getConfig } from './config';
-import { Config, DiscoveredFile } from './types';
+import { Config, Course, DiscoveredFile } from './types';
 import { formatBytes } from './utils/helpers';
 
 // Separator is available at runtime in inquirer v8 as a property on the module.
@@ -312,9 +312,40 @@ program
         await wbDownloader.initialize();
         spinner.succeed('Logged in successfully');
 
-        // Phase 2: Discover all files
-        spinner.start('Scanning all course materials...');
-        const discoveredFiles = await wbDownloader.discoverAllFiles();
+        // Phase 2: Fetch course list
+        spinner.start('Fetching course list...');
+        const allCourses = await wbDownloader.getCourses();
+        spinner.stop();
+
+        if (allCourses.length === 0) {
+          console.log(chalk.yellow('\nNo courses found.\n'));
+          return;
+        }
+
+        let selectedCourses: Course[];
+
+        if (options.all) {
+          // --all flag: skip both GUIs, process every course
+          selectedCourses = allCourses;
+          console.log(chalk.cyan(`\n📚 Processing all ${allCourses.length} courses...\n`));
+        } else {
+          // Phase 3: Course selection GUI
+          console.log();
+          selectedCourses = await selectCoursesInteractively(allCourses);
+
+          if (selectedCourses.length === 0) {
+            console.log(chalk.yellow('\nNo courses selected. Exiting.\n'));
+            return;
+          }
+
+          console.log(
+            chalk.cyan(`\n📚 Scanning ${selectedCourses.length} selected course(s)...\n`)
+          );
+        }
+
+        // Phase 4: Discover all files in selected courses
+        spinner.start('Scanning selected course materials...');
+        const discoveredFiles = await wbDownloader.discoverAllFiles(selectedCourses);
         spinner.stop();
 
         if (discoveredFiles.length === 0) {
@@ -322,7 +353,7 @@ program
           return;
         }
 
-        // Phase 3: Fetch file sizes via HEAD requests
+        // Phase 5: Fetch file sizes via HEAD requests
         spinner.start(`Fetching metadata for ${discoveredFiles.length} files...`);
         const enrichedFiles = await wbDownloader.fetchFileMetadata(discoveredFiles);
         const withSize = enrichedFiles.filter(f => f.size !== undefined).length;
@@ -333,13 +364,13 @@ program
         let filesToDownload: DiscoveredFile[];
 
         if (options.all) {
-          // --all flag: skip GUI, download everything
+          // --all flag: skip file selection GUI, download everything
           filesToDownload = enrichedFiles;
           console.log(
             chalk.cyan(`\n📥 Downloading all ${filesToDownload.length} files...\n`)
           );
         } else {
-          // Phase 4: GUI file selection
+          // Phase 6: GUI file selection
           console.log();
           filesToDownload = await selectFilesInteractively(enrichedFiles);
 
@@ -353,7 +384,7 @@ program
           );
         }
 
-        // Phase 5: Sort by size (small files first) so quick downloads
+        // Phase 7: Sort by size (small files first) so quick downloads
         // complete immediately while large files run in parallel.
         filesToDownload.sort((a, b) => {
           if (a.size === undefined && b.size === undefined) return 0;
@@ -362,7 +393,7 @@ program
           return a.size - b.size;
         });
 
-        // Phase 6: Download selected files
+        // Phase 8: Download selected files
         await wbDownloader.downloadSelected(filesToDownload);
 
         multibar.stop();
@@ -430,6 +461,42 @@ program
       process.exit(1);
     }
   });
+
+// ---------------------------------------------------------------------------
+// Interactive course selection GUI
+// ---------------------------------------------------------------------------
+
+/**
+ * Display an inquirer checkbox list of available courses.
+ * All courses are pre-selected; the user can uncheck courses they don't want
+ * to scrape.  Returns only the courses the user kept checked.
+ */
+async function selectCoursesInteractively(courses: Course[]): Promise<Course[]> {
+  console.log(chalk.bold.cyan(`📚 Found ${courses.length} course(s) on your account`));
+  console.log(
+    chalk.gray(
+      '   Use ↑↓ to navigate, Space to toggle, a to select/deselect all, Enter to confirm\n'
+    )
+  );
+
+  const choices = courses.map(course => ({
+    name: course.name,
+    value: course,
+    checked: true,
+  }));
+
+  const answers: any = await inquirer.prompt([
+    {
+      type: 'checkbox',
+      name: 'selectedCourses',
+      message: `Select courses to scrape (${courses.length} pre-selected):`,
+      choices,
+      pageSize: 20,
+    },
+  ]);
+
+  return (answers.selectedCourses as Course[]) || [];
+}
 
 // ---------------------------------------------------------------------------
 // Interactive file selection GUI
