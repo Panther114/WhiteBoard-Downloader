@@ -43,10 +43,14 @@ export class BlackboardScraper {
 
         // Default filter: only courses starting with current semester (e.g., "2025I")
         if (text.trim().startsWith('2025I') || text.trim().startsWith('2026I')) {
+          // Clean and construct full URL
+          const cleanHref = href.trim();
+          const fullUrl = cleanHref.startsWith('http') ? cleanHref : `${this.config.baseUrl}${cleanHref}`;
+
           courses.push({
             id: href.split('id=')[1] || '',
             name: courseName,
-            url: href,
+            url: fullUrl,
             path: sanitizeFilename(courseName),
           });
         }
@@ -79,9 +83,13 @@ export class BlackboardScraper {
 
         // Skip non-content pages
         if (!['home page', 'discussions', 'groups', 'tools', 'help'].includes(normalizedTitle)) {
+          // Clean and construct full URL
+          const cleanHref = href.trim();
+          const fullUrl = cleanHref.startsWith('http') ? cleanHref : `${this.config.baseUrl}${cleanHref}`;
+
           links.push({
             title: title.trim().replace(/[\/\\]/g, '_'),
-            url: href,
+            url: fullUrl,
             path: sanitizeFilename(title.trim().replace(/[\/\\]/g, '_')),
           });
         }
@@ -147,9 +155,13 @@ export class BlackboardScraper {
         if (href && text && href.includes('listContent.jsp')) {
           const folderName = text.trim().replace(/[\/\\]/g, '_');
 
+          // Clean and construct full URL
+          const cleanHref = href.trim();
+          const fullUrl = cleanHref.startsWith('http') ? cleanHref : `${this.config.baseUrl}${cleanHref}`;
+
           folders.push({
             name: folderName,
-            url: href,
+            url: fullUrl,
             path: sanitizeFilename(folderName),
             parentPath,
           });
