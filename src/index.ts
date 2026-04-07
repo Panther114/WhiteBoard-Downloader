@@ -16,11 +16,12 @@ export class WhiteboardDownloader {
 
   constructor(config: Config) {
     this.config = config;
+
+    // Initialize logger first (required by other components)
+    initLogger(config.logLevel, config.logFile);
+
     this.auth = new BlackboardAuth(config);
     this.db = new DownloadDatabase(config.databasePath);
-
-    // Initialize logger
-    initLogger(config.logLevel, config.logFile);
   }
 
   /**
