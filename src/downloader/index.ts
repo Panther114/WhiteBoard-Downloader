@@ -1,6 +1,7 @@
 import axios, { AxiosInstance } from 'axios';
 import fs from 'fs';
 import path from 'path';
+import { EventEmitter } from 'events';
 import pLimit from 'p-limit';
 import pRetry from 'p-retry';
 import mime from 'mime-types';
@@ -16,13 +17,14 @@ import {
 } from '../utils/helpers';
 import { DownloadDatabase } from '../database';
 
-export class FileDownloader {
+export class FileDownloader extends EventEmitter {
   private axios: AxiosInstance;
   private config: Config;
   private limiter: ReturnType<typeof pLimit>;
   private db: DownloadDatabase;
 
   constructor(config: Config, cookies: any[], db: DownloadDatabase) {
+    super();
     this.config = config;
     this.db = db;
     this.limiter = pLimit(config.maxConcurrentDownloads);
@@ -51,11 +53,13 @@ export class FileDownloader {
     // Check if already downloaded
     if (this.db.isDownloaded(file.url)) {
       log.debug(`Skipping already downloaded file: ${file.name}`);
+      this.emit('download:skip', { url: file.url, filename: file.name });
       return;
     }
 
     const downloadFn = async () => {
       log.info(`Downloading: ${file.name}`);
+      this.emit('download:start', file);
 
       try {
         // Make request
@@ -100,6 +104,20 @@ export class FileDownloader {
         // Get unique file path
         const filePath = getUniqueFilePath(file.path, filename);
 
+        // Track download progress
+        const totalSize = parseInt(response.headers['content-length'] || '0', 10);
+        let downloadedSize = 0;
+
+        response.data.on('data', (chunk: Buffer) => {
+          downloadedSize += chunk.length;
+          this.emit('download:progress', {
+            url: file.url,
+            filename,
+            downloaded: downloadedSize,
+            total: totalSize,
+          });
+        });
+
         // Download file
         const writer = fs.createWriteStream(filePath);
         response.data.pipe(writer);
@@ -121,9 +139,11 @@ export class FileDownloader {
           downloadedAt: new Date(),
         });
 
+        this.emit('download:complete', { url: file.url, filename, size: fileSize });
         log.info(`✓ Saved: ${filename} (${formatBytes(fileSize)})`);
       } catch (error: any) {
         log.error(`Failed to download ${file.name}: ${error.message}`);
+        this.emit('download:error', { url: file.url, filename: file.name, error: error.message });
 
         // Update database with error
         this.db.upsertDownload({

@@ -1,5 +1,6 @@
 import path from 'path';
-import { Config, DownloadableFile } from './types';
+import { EventEmitter } from 'events';
+import { Config } from './types';
 import { BlackboardAuth } from './auth';
 import { BlackboardScraper } from './scraper';
 import { FileDownloader } from './downloader';
@@ -7,7 +8,7 @@ import { DownloadDatabase } from './database';
 import { initLogger, log } from './utils/logger';
 import { ensureDirectory } from './utils/helpers';
 
-export class WhiteboardDownloader {
+export class WhiteboardDownloader extends EventEmitter {
   private config: Config;
   private auth: BlackboardAuth;
   private scraper: BlackboardScraper | null = null;
@@ -15,6 +16,7 @@ export class WhiteboardDownloader {
   private db: DownloadDatabase;
 
   constructor(config: Config) {
+    super();
     this.config = config;
 
     // Initialize logger first (required by other components)
@@ -38,6 +40,13 @@ export class WhiteboardDownloader {
 
     this.scraper = new BlackboardScraper(page, this.config);
     this.downloader = new FileDownloader(this.config, cookies, this.db);
+
+    // Forward FileDownloader events to WhiteboardDownloader
+    this.downloader.on('download:start', (data) => this.emit('download:start', data));
+    this.downloader.on('download:progress', (data) => this.emit('download:progress', data));
+    this.downloader.on('download:complete', (data) => this.emit('download:complete', data));
+    this.downloader.on('download:error', (data) => this.emit('download:error', data));
+    this.downloader.on('download:skip', (data) => this.emit('download:skip', data));
 
     log.info('Initialization complete');
   }

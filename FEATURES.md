@@ -30,10 +30,14 @@ This document outlines all features implemented in the Whiteboard Downloader v2.
 ### User Experience
 - [x] **Beautiful CLI Interface** - Colored output with Inquirer and Chalk
 - [x] **Progress Indicators** - Visual feedback with Ora spinners
+- [x] **Download Progress GUI** - Multi-bar per-file progress display with file names, sizes, and percentages (cli-progress)
 - [x] **Comprehensive Logging** - Winston-based logging with file and console output
 - [x] **Debug Mode** - Detailed logging for troubleshooting (set `LOG_LEVEL=debug`)
 - [x] **One-Click Launchers** - Double-click scripts for Windows, macOS, and Linux
 - [x] **Node.js Version Validation** - Launcher scripts check for compatible Node.js versions
+- [x] **First-Time Setup Wizard** - `setup` command (and `npm run setup`) guides through credential configuration and Playwright browser installation
+- [x] **Single Credential Entry** - Credentials entered once in `setup` or saved on first interactive run; stored in `.env` for reuse
+- [x] **npm Package** - Installable via `npm install` with `whiteboard-dl` binary; `npm run setup` for quick first-time configuration
 
 ### Technical Implementation
 - [x] **TypeScript** - Full type safety throughout the codebase
@@ -65,7 +69,7 @@ This document outlines all features implemented in the Whiteboard Downloader v2.
 ## 🚧 In Progress / Planned Features
 
 ### Potential Future Enhancements
-- [ ] **GUI Application** - Desktop app with Electron
+- [ ] **Full Desktop GUI** - Electron-based desktop application
 - [ ] **Multi-Account Support** - Download from multiple accounts
 - [ ] **Selective Downloads** - Choose specific files/folders to download
 - [ ] **Incremental Backups** - Only download new/modified files
