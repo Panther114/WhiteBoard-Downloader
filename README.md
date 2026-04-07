@@ -22,6 +22,7 @@ Modern, async-first automation tool to download course materials from **SHSID Bl
 - **🔒 Type Safety**: Full TypeScript type safety throughout the codebase
 - **⚙️ Flexible Configuration**: Environment variables, config files, and CLI arguments
 - **🎯 Course Filtering**: Regex-based course filtering to download only what you need
+- **🖱️ One-Click Launcher**: Simple double-click scripts for Windows, macOS, and Linux
 
 ---
 
@@ -58,6 +59,7 @@ Modern, async-first automation tool to download course materials from **SHSID Bl
 - ✅ **Resume Capability**: Resume interrupted downloads from where you left off
 - ✅ **Cross-Platform**: Works on Windows, macOS, and Linux
 - ✅ **Docker Support**: Run in isolated container environment
+- ✅ **One-Click Launch**: Double-click launcher scripts with desktop shortcut support
 
 ---
 
@@ -138,9 +140,21 @@ BB_PASSWORD=your_password
 
 ### 2. Run the Downloader
 
+#### Option A: One-Click Launch (Easiest!) 🚀
+
+**Windows:**
+- Double-click `start.bat` or `start.ps1` in the project folder
+
+**macOS/Linux:**
+- Double-click `start.sh` (make it executable first: `chmod +x start.sh`)
+
+**Want a desktop shortcut?** See [LAUNCHER_GUIDE.md](LAUNCHER_GUIDE.md) for detailed instructions.
+
+#### Option B: Command Line
+
 ```bash
 # Using npm
-npm start
+npm start download
 
 # Or run directly
 node dist/cli.js download
