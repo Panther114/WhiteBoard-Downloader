@@ -1,6 +1,6 @@
 import path from 'path';
 import { EventEmitter } from 'events';
-import { Config, DiscoveredFile, DownloadableFile } from './types';
+import { Config, Course, DiscoveredFile, DownloadableFile } from './types';
 import { BlackboardAuth } from './auth';
 import { BlackboardScraper } from './scraper';
 import { FileDownloader } from './downloader';
@@ -56,29 +56,44 @@ export class WhiteboardDownloader extends EventEmitter {
   // ---------------------------------------------------------------------------
 
   /**
+   * Return the list of all courses available to the logged-in user.
+   * Call this before the course selection GUI so the user can pick which
+   * courses to scrape.
+   */
+  async getCourses(): Promise<Course[]> {
+    if (!this.scraper) {
+      throw new Error('Not initialized. Call initialize() first.');
+    }
+    return this.scraper.getCourses();
+  }
+
+  /**
    * Traverse every course → section → folder recursively and return a flat
    * list of DiscoveredFile objects.  No downloads are performed.
    * Call this before presenting the GUI selection to the user.
+   *
+   * @param courses - Optional pre-selected courses to scrape. When omitted all
+   *   courses returned by `getCourses()` are scraped (backward-compatible).
    */
-  async discoverAllFiles(): Promise<DiscoveredFile[]> {
+  async discoverAllFiles(courses?: Course[]): Promise<DiscoveredFile[]> {
     if (!this.scraper) {
       throw new Error('Not initialized. Call initialize() first.');
     }
 
     ensureDirectory(this.config.downloadDir);
 
-    const courses = await this.scraper.getCourses();
+    const resolvedCourses = courses ?? (await this.scraper.getCourses());
 
-    if (courses.length === 0) {
+    if (resolvedCourses.length === 0) {
       log.warn('No courses found');
       return [];
     }
 
-    log.info(`Discovering files in ${courses.length} courses...`);
+    log.info(`Discovering files in ${resolvedCourses.length} courses...`);
 
     const allFiles: DiscoveredFile[] = [];
 
-    for (const course of courses) {
+    for (const course of resolvedCourses) {
       log.info(`${'='.repeat(60)}`);
       log.info(`Discovering course: ${course.name}`);
       log.info('='.repeat(60));

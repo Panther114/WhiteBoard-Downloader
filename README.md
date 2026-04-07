@@ -25,6 +25,8 @@ Modern, async-first automation tool to download course materials from **SHSID Bl
 - **🔒 Type Safety**: Full TypeScript type safety throughout the codebase
 - **⚙️ Flexible Configuration**: Environment variables, config files, and CLI arguments
 - **🎯 Course Filtering**: Regex-based course filtering to download only what you need
+- **📋 Course Selection GUI**: Interactive checkbox list to choose which courses to scrape before scanning
+- **⚡ Faster Scraping**: Batch DOM queries replace per-element round-trips for faster discovery
 - **🖱️ One-Click Launcher**: Simple double-click scripts for Windows, macOS, and Linux
 
 ---
@@ -57,6 +59,7 @@ Modern, async-first automation tool to download course materials from **SHSID Bl
 - ✅ **Concurrent Downloads**: Download multiple files in parallel (configurable)
 - ✅ **Automatic Retry**: Retries failed downloads with exponential backoff
 - ✅ **Download Progress GUI**: Live multi-bar progress display (file name, size, percentage)
+- ✅ **Course Selection GUI**: Interactive checkbox list shown before scraping — pick exactly which courses to process
 - ✅ **Setup Wizard**: `npm run setup` or `whiteboard-dl setup` for first-time configuration
 - ✅ **Single Credential Entry**: Credentials stored in `.env` — enter once, reuse forever
 - ✅ **Course Filtering**: Filter courses by regex pattern
