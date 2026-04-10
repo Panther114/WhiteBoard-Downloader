@@ -2,7 +2,19 @@ import winston from 'winston';
 import path from 'path';
 import fs from 'fs';
 
-let logger: winston.Logger;
+/**
+ * Minimal console-only logger used before `initLogger()` is called.
+ * This prevents a hard throw if any module emits a log at import time or
+ * before the `WhiteboardDownloader` constructor runs.
+ */
+let logger: winston.Logger = winston.createLogger({
+  level: 'info',
+  format: winston.format.combine(
+    winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
+    winston.format.printf(({ timestamp, level, message }) => `${timestamp} [${level}]: ${message}`)
+  ),
+  transports: [new winston.transports.Console()],
+});
 
 /**
  * Initialize logger with configuration
@@ -47,12 +59,11 @@ export function initLogger(logLevel: string, logFile: string): winston.Logger {
 }
 
 /**
- * Get the logger instance
+ * Get the logger instance.
+ * Always returns a valid logger — a minimal console logger is used until
+ * `initLogger()` replaces it with the fully configured one.
  */
 export function getLogger(): winston.Logger {
-  if (!logger) {
-    throw new Error('Logger not initialized. Call initLogger() first.');
-  }
   return logger;
 }
 
