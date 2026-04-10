@@ -8,6 +8,9 @@ import { DownloadDatabase } from './database';
 import { initLogger, log } from './utils/logger';
 import { ensureDirectory } from './utils/helpers';
 
+/** Maximum folder-nesting depth before recursion is aborted. */
+const MAX_DISCOVER_DEPTH = 10;
+
 export class WhiteboardDownloader extends EventEmitter {
   private config: Config;
   private auth: BlackboardAuth;
@@ -140,13 +143,25 @@ export class WhiteboardDownloader extends EventEmitter {
   /**
    * Recursively discover files in the current page (already navigated to).
    * Does NOT download anything.
+   * `depth` is incremented on every recursive call; if it reaches MAX_DISCOVER_DEPTH
+   * a warning is emitted and recursion stops to prevent stack overflows on
+   * unusual or circular course structures.
    */
   private async discoverFolder(
     currentPath: string,
     courseName: string,
-    sectionName: string
+    sectionName: string,
+    depth = 0
   ): Promise<DiscoveredFile[]> {
     if (!this.scraper) return [];
+
+    if (depth >= MAX_DISCOVER_DEPTH) {
+      log.warn(
+        `    Max folder depth (${MAX_DISCOVER_DEPTH}) reached in "${sectionName}" — ` +
+          'stopping recursion to prevent stack overflow.'
+      );
+      return [];
+    }
 
     const discovered: DiscoveredFile[] = [];
 
@@ -186,7 +201,7 @@ export class WhiteboardDownloader extends EventEmitter {
         continue;
       }
 
-      const subFiles = await this.discoverFolder(subfolderPath, courseName, sectionName);
+      const subFiles = await this.discoverFolder(subfolderPath, courseName, sectionName, depth + 1);
       discovered.push(...subFiles);
 
       // Navigate back after processing the subfolder

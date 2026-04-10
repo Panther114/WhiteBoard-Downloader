@@ -154,7 +154,15 @@ export class BlackboardScraper {
     }
     log.debug(`Successfully navigated to course, current URL: ${this.page.url()}`);
 
-    await this.page.waitForSelector('#courseMenuPalette_contents li a', { timeout: 10000 });
+    try {
+      await this.page.waitForSelector('#courseMenuPalette_contents li a', { timeout: 10000 });
+    } catch {
+      log.warn(
+        `Sidebar menu not found for course URL ${courseUrl} — ` +
+          'the course may use a non-standard layout. Returning empty sidebar.'
+      );
+      return [];
+    }
 
     const rawLinks = await this.page.$$eval('#courseMenuPalette_contents li a', els =>
       els.map(el => ({

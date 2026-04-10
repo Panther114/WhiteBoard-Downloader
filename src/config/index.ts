@@ -36,7 +36,7 @@ export function loadConfig(): Config {
     baseUrl: process.env.BB_BASE_URL || 'https://shs.blackboardchina.cn',
     loginUrl: process.env.BB_LOGIN_URL || 'https://shs.blackboardchina.cn/webapps/login/',
     downloadDir: process.env.DOWNLOAD_DIR || './downloads',
-    maxConcurrentDownloads: parseInt(process.env.MAX_CONCURRENT_DOWNLOADS || '10', 10),
+    maxConcurrentDownloads: parseInt(process.env.MAX_CONCURRENT_DOWNLOADS || '5', 10),
     downloadTimeout: parseInt(process.env.DOWNLOAD_TIMEOUT || '60000', 10),
     browserType: (process.env.BROWSER_TYPE || 'chromium') as 'chromium' | 'firefox' | 'webkit',
     headless: process.env.HEADLESS !== 'false',
