@@ -10,27 +10,6 @@ Modern, async-first automation tool to download course materials from **SHSID Bl
 
 ---
 
-## 🚀 What's New in v2.0
-
-- **🔄 Modern Stack**: Completely rewritten in TypeScript with Playwright
-- **⚡ Concurrent Downloads**: Download multiple files simultaneously with configurable concurrency
-- **💾 Smart Caching**: SQLite database tracks downloaded files to enable resume capability
-- **🔁 Auto-Retry**: Automatic retry with exponential backoff for failed downloads
-- **🎨 Beautiful CLI**: Enhanced terminal UI with progress indicators and colored output
-- **📊 Download Progress GUI**: Live multi-bar progress display with file names, sizes, and per-file percentages
-- **🛠️ Setup Wizard**: `npm run setup` guides you through first-time credential configuration
-- **🔑 Single Credential Entry**: Enter credentials once — saved to `.env`, never asked again
-- **🐳 Docker Support**: Run in containerized environment with zero setup
-- **📝 Comprehensive Logging**: Structured logging with Winston
-- **🔒 Type Safety**: Full TypeScript type safety throughout the codebase
-- **⚙️ Flexible Configuration**: Environment variables, config files, and CLI arguments
-- **🎯 Course Filtering**: Regex-based course filtering to download only what you need
-- **📋 Course Selection GUI**: Interactive checkbox list to choose which courses to scrape before scanning
-- **⚡ Faster Scraping**: Batch DOM queries replace per-element round-trips for faster discovery
-- **🖱️ One-Click Launcher**: Simple double-click scripts for Windows, macOS, and Linux
-
----
-
 ## 📋 Table of Contents
 
 1. [Features](#-features)
