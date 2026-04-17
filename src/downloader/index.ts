@@ -7,7 +7,7 @@ import { EventEmitter } from 'events';
 import pLimit from 'p-limit';
 import pRetry from 'p-retry';
 import mime from 'mime-types';
-import { Config, DiscoveredFile, DownloadableFile } from '../types';
+import { Config, DiscoveredFile, DownloadableFile, FileTree } from '../types';
 import { log } from '../utils/logger';
 import {
   sanitizeFilename,
@@ -20,6 +20,7 @@ import {
   formatBytes,
 } from '../utils/helpers';
 import { DownloadDatabase } from '../database';
+import { addFileToTree, saveFileTree } from '../fileTree';
 
 /** Milliseconds without data before a download stream is considered stalled. */
 const INACTIVITY_TIMEOUT_MS = 30_000;
@@ -38,11 +39,13 @@ export class FileDownloader extends EventEmitter {
   private config: Config;
   private limiter: ReturnType<typeof pLimit>;
   private db: DownloadDatabase;
+  private fileTree: FileTree;
 
-  constructor(config: Config, cookies: any[], db: DownloadDatabase) {
+  constructor(config: Config, cookies: any[], db: DownloadDatabase, fileTree: FileTree) {
     super();
     this.config = config;
     this.db = db;
+    this.fileTree = fileTree;
     this.limiter = pLimit(config.maxConcurrentDownloads);
 
     // Build cookie string from the authenticated Playwright session.
@@ -286,6 +289,10 @@ export class FileDownloader extends EventEmitter {
           downloadedAt: new Date(),
         });
 
+        // Update the file tree cache.  We derive course/section/folder from the
+        // DownloadableFile path (which follows the <course>/<section>/... layout).
+        this.updateFileTree(file, finalPath, filename, fileSize);
+
         this.emit('download:complete', { url: file.url, filename, size: fileSize });
         log.info(`✓ Saved: ${filename} (${formatBytes(fileSize)})`);
       } catch (error: any) {
@@ -331,6 +338,44 @@ export class FileDownloader extends EventEmitter {
       });
     } catch {
       log.error(`Failed to download ${file.name} after ${this.config.maxRetries} retries`);
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // File tree cache
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Derive course/section/folder from the file path layout and update the
+   * in-memory file tree.  Saves to disk immediately so progress is preserved
+   * even if the process is interrupted.
+   */
+  private updateFileTree(
+    file: DownloadableFile,
+    finalPath: string,
+    filename: string,
+    fileSize: number,
+  ): void {
+    try {
+      // The file.path should follow <downloadDir>/<course>/<section>/[subfolder/]
+      const relPath = path.relative(this.config.downloadDir, file.path);
+      const parts = relPath.split(path.sep).filter(Boolean);
+
+      const courseName = parts[0] || 'Unknown Course';
+      const sectionName = parts[1] || 'Unknown Section';
+      const folderPath = file.path;
+
+      addFileToTree(this.fileTree, courseName, sectionName, folderPath, filename, {
+        url: file.url,
+        localPath: finalPath,
+        size: fileSize,
+        downloadedAt: new Date().toISOString(),
+        mimeType: file.mimeType,
+      });
+
+      saveFileTree(this.fileTree, this.config.fileTreePath);
+    } catch (err: any) {
+      log.debug(`Failed to update file tree: ${err.message}`);
     }
   }
 
