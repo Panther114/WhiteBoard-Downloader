@@ -1,7 +1,8 @@
 import { Page } from 'playwright';
 import { Config, Course, ContentFolder, DownloadableFile, SidebarLink } from '../types';
 import { log } from '../utils/logger';
-import { sanitizeFilename, extractFilenameFromUrl } from '../utils/helpers';
+import { sanitizeFilename, extractFilenameFromUrl, dumpPageStructure } from '../utils/helpers';
+import path from 'path';
 
 /** Milliseconds to wait for #content_listContainer before giving up on a page. */
 const CONTENT_CONTAINER_TIMEOUT_MS = 12_000;
@@ -12,14 +13,45 @@ const NAV_HREF_PATTERNS = [
   'displayContent.jsp',
   'courseMenuPalette',
   'javascript:',
+  // Blackboard application/tool pages — never downloadable files
+  'execute/courseMain',
+  'execute/announcement',
+  'execute/blti',
+  'execute/modulepage',
+  'execute/viewSurvey',
+  'execute/take_test_student',
+  'execute/overview',
+  'execute/gradebook',
+  'execute/discussionboard',
+  'execute/calendar',
+  'webapps/calendar',
+  'webapps/discussionboard',
+  'webapps/blackboard/execute/announcement',
 ];
+
+/** Known-safe execute/ URL fragments that are actual file downloads. */
+const SAFE_EXECUTE_PATTERNS = ['execute/content'];
 
 /**
  * File extensions that are always treated as downloadable regardless of
  * other heuristics.
+ *
+ * NOTE: media formats (mp4, mov, avi, mkv, wmv, mp3, wav, etc.) are intentionally
+ * excluded — they are blocked by BLOCKED_MEDIA_RE below.
  */
 const FILE_EXT_RE =
-  /\.(pdf|pptx?|docx?|xlsx?|zip|rar|7z|gz|mp4|mov|avi|mkv|wmv|mp3|wav|png|jpg|jpeg|gif|bmp|svg|txt|csv|json|xml)$/i;
+  /\.(pdf|pptx?|docx?|xlsx?|zip|rar|7z|gz|png|jpg|jpeg|gif|bmp|svg|txt|csv|json|xml)$/i;
+
+/**
+ * Media extensions that are always blocked from discovery and download.
+ */
+const BLOCKED_MEDIA_RE =
+  /\.(mp4|mp3|mov|avi|mkv|wmv|webm|flv|wav|aac|ogg|m4a|m4v)$/i;
+
+/**
+ * MIME type prefixes that indicate audio/video content (blocked).
+ */
+const BLOCKED_MEDIA_MIME_PREFIXES = ['video/', 'audio/'];
 
 export class BlackboardScraper {
   private page: Page;
@@ -36,13 +68,15 @@ export class BlackboardScraper {
 
   /**
    * Navigate to a URL with up to `retries` attempts on failure.
+   * Uses `domcontentloaded` instead of `networkidle` for speed — Blackboard
+   * pages with analytics widgets often never reach networkidle.
    * Returns true on success, false if all attempts fail.
    */
   async navigateTo(url: string, retries = 3): Promise<boolean> {
     for (let attempt = 1; attempt <= retries; attempt++) {
       try {
         await this.page.goto(url, {
-          waitUntil: 'networkidle',
+          waitUntil: 'domcontentloaded',
           timeout: this.config.browserTimeout,
         });
         log.debug(`Navigated to ${url}`);
@@ -223,6 +257,9 @@ export class BlackboardScraper {
    *   6. .details sub-element links
    *   7. Extension-based heuristic catch-all
    *
+   * Media files (mp4, mp3, etc.) are excluded unconditionally.
+   * Ambiguous `execute/` links that aren't in the safe-list are flagged.
+   *
    * Results are deduplicated by absolute URL.
    */
   async getDownloadableFiles(basePath: string): Promise<DownloadableFile[]> {
@@ -233,8 +270,18 @@ export class BlackboardScraper {
     try {
       await this.page.waitForSelector('#content_listContainer', { timeout: CONTENT_CONTAINER_TIMEOUT_MS });
     } catch {
-      log.debug('No #content_listContainer found on current page — skipping file scan');
+      // Enhanced debug: include page URL and title so we know what page was hit
+      const pageTitle = await this.page.title().catch(() => '(unknown)');
+      log.debug(
+        `No #content_listContainer found on current page — skipping file scan. ` +
+        `URL: ${this.page.url()}, title: "${pageTitle}"`
+      );
       return files;
+    }
+
+    // Dump full page structure to logs when running in debug mode
+    if (this.config.logLevel === 'debug') {
+      await dumpPageStructure(this.page, 'getDownloadableFiles');
     }
 
     // Gather all anchor data in a single JS evaluation.
@@ -252,7 +299,16 @@ export class BlackboardScraper {
       NAV_HREF_PATTERNS.some(p => href.includes(p));
 
     for (const { href, text, target, inAttachments, inDetails } of rawLinks) {
-      if (!href || isNavHref(href)) continue;
+      if (!href || isNavHref(href)) {
+        if (href) log.debug(`Rejected link (nav pattern): "${text.trim().substring(0, 60)}" -> ${href}`);
+        continue;
+      }
+
+      // Block media files by URL extension
+      if (BLOCKED_MEDIA_RE.test(href)) {
+        log.debug(`Skipping media file (blocked extension): "${text.trim().substring(0, 60)}" -> ${href}`);
+        continue;
+      }
 
       // Check whether this link matches any of the 7 download patterns.
       const isBlank = target === '_blank';
@@ -265,9 +321,28 @@ export class BlackboardScraper {
         continue;
       }
 
+      // Flag ambiguous execute/ links that aren't in the known-safe list.
+      // These may be quiz/assignment/tool pages rather than real files.
+      if (href.includes('execute/') && !SAFE_EXECUTE_PATTERNS.some(p => href.includes(p))) {
+        // Only accept if it also has a strong positive signal (bbcswebdav or known extension)
+        if (!isBbcs && !isExtHeuristic) {
+          log.debug(
+            `Rejected ambiguous execute/ link: "${text.trim().substring(0, 60)}" -> ${href}`
+          );
+          continue;
+        }
+      }
+
       const fullUrl = href.startsWith('http') ? href : `${this.config.baseUrl}${href}`;
       if (seenUrls.has(fullUrl)) continue;
       seenUrls.add(fullUrl);
+
+      // Block media files by URL extension on the resolved URL as well
+      const urlExt = path.extname(new URL(fullUrl, this.config.baseUrl).pathname).toLowerCase();
+      if (BLOCKED_MEDIA_RE.test(urlExt)) {
+        log.debug(`Skipping media file (resolved URL ext): "${text.trim().substring(0, 60)}" -> ${fullUrl}`);
+        continue;
+      }
 
       const displayName = text.trim() || extractFilenameFromUrl(fullUrl);
       log.debug(`Found downloadable file: "${displayName}" -> ${fullUrl}`);
@@ -340,7 +415,7 @@ export class BlackboardScraper {
    * Navigate back in browser history.
    */
   async goBack(): Promise<void> {
-    await this.page.goBack({ waitUntil: 'networkidle' });
+    await this.page.goBack({ waitUntil: 'domcontentloaded' });
   }
 
   /**
@@ -349,7 +424,7 @@ export class BlackboardScraper {
   async returnToHome(): Promise<void> {
     try {
       await this.page.click('td[id="MyInstitution.label"] a', { timeout: 5000 });
-      await this.page.waitForLoadState('networkidle');
+      await this.page.waitForLoadState('domcontentloaded');
       log.debug('Returned to My Institution page');
     } catch {
       log.warn('Could not return to My Institution page');

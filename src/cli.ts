@@ -12,6 +12,7 @@ import { WhiteboardDownloader } from './index';
 import { getConfig } from './config';
 import { Config, Course, DiscoveredFile } from './types';
 import { formatBytes, sanitizeFilename } from './utils/helpers';
+import { isFileInTree } from './fileTree';
 
 // Separator is available at runtime in inquirer v8 as a property on the module.
 // @types/inquirer@9 ships types for inquirer@9 while the runtime is inquirer@8,
@@ -276,7 +277,8 @@ program
         );
 
         // Phase 5.5: Filter files already present on disk (duplicate prevention)
-        const { files: undownloadedFiles, skippedOnDisk } = filterAlreadyDownloaded(enrichedFiles);
+        const fileTree = wbDownloader.getFileTree();
+        const { files: undownloadedFiles, skippedOnDisk } = filterAlreadyDownloaded(enrichedFiles, fileTree);
         if (skippedOnDisk > 0) {
           console.log(
             chalk.gray(`   ↳ Skipped ${skippedOnDisk} file(s) already present in downloads folder`)
@@ -492,20 +494,48 @@ program
  * Remove files whose sanitized name already exists in the target directory on
  * disk.  This keeps the TUI clean by only showing files that still need to be
  * downloaded.
+ *
+ * Primary check: look up the file in the JSON file-tree cache (O(1) per file).
+ * Secondary fallback: `fs.existsSync` for files that exist on disk but aren't
+ * in the tree yet (e.g. manually placed files or files from before the cache
+ * was introduced).
+ *
+ * Note: the check compares within `file.savePath` (the full local directory
+ * including course/section path), so two different Blackboard files with the
+ * same display name in different courses are handled correctly — they live in
+ * separate directories and won't shadow each other.
  */
 function filterAlreadyDownloaded(
-  files: DiscoveredFile[]
+  files: DiscoveredFile[],
+  fileTree: import('./types').FileTree,
 ): { files: DiscoveredFile[]; skippedOnDisk: number } {
   const result: DiscoveredFile[] = [];
   let skippedOnDisk = 0;
 
   for (const file of files) {
     const sanitized = sanitizeFilename(file.name);
-    const existsByOriginal = fs.existsSync(path.join(file.savePath, file.name));
-    const existsBySanitized =
-      sanitized !== file.name && fs.existsSync(path.join(file.savePath, sanitized));
 
-    if (existsByOriginal || existsBySanitized) {
+    // Primary: file-tree cache lookup
+    const inTree = isFileInTree(
+      fileTree,
+      file.courseName,
+      file.sectionName,
+      file.savePath,
+      file.name,
+    ) || isFileInTree(
+      fileTree,
+      file.courseName,
+      file.sectionName,
+      file.savePath,
+      sanitized,
+    );
+
+    // Secondary fallback: filesystem check
+    const existsByOriginal = !inTree && fs.existsSync(path.join(file.savePath, file.name));
+    const existsBySanitized =
+      !inTree && sanitized !== file.name && fs.existsSync(path.join(file.savePath, sanitized));
+
+    if (inTree || existsByOriginal || existsBySanitized) {
       skippedOnDisk++;
     } else {
       result.push(file);

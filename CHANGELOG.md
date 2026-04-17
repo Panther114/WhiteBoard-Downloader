@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.0] - 2026-04-17
+
+### Added
+- **Dynamic file extension detection** — `downloadFile()` now validates the filename extension against the `Content-Type` MIME header. If they disagree (e.g. a file named `Slides` served as `application/pdf`), the MIME-derived extension is appended or corrected. Full HTTP header details are logged at `debug` level.
+- **Debug HTML dump** — new `dumpPageStructure()` helper writes the full `#content_listContainer` HTML and an anchor-tag summary to `logs/debug-<timestamp>-<label>.html` when `LOG_LEVEL=debug`, making it easy to diagnose missing files and incorrect link classification.
+- **Media file exclusion** — audio/video files (`mp4`, `mp3`, `mov`, `avi`, `mkv`, `wmv`, `webm`, `flv`, `wav`, `aac`, `ogg`, `m4a`, `m4v`) are blocked at both discovery time (by URL extension) and metadata time (by MIME type). They never appear in the download list.
+- **JSON file-tree cache** (`file_tree.json`) — mirrors Blackboard's course / section / folder hierarchy. Replaces the per-run `fs.existsSync` scan with O(1) in-memory lookups. The tree is updated after each successful download and saved atomically. On first run, the existing download directory is scanned to build the initial tree (migration path for existing users). Configurable via `FILE_TREE_PATH` in `.env`.
+- **`markAllPendingAsFailed()` in `DownloadDatabase`** — on startup, records stuck in `pending` status from a previous interrupted run are reset to `failed` so they appear in the retry queue.
+- **Log rotation** — the Winston file transport now rotates at 5 MB and keeps 3 rotated log files, preventing `whiteboard.log` from growing indefinitely.
+
+### Changed
+- **Scraping speed** — replaced `waitUntil: 'networkidle'` with `'domcontentloaded'` in `navigateTo()`, `goBack()`, and `returnToHome()`. Blackboard pages with analytics widgets can add 5–30 seconds of idle-wait; `domcontentloaded` eliminates this overhead.
+- **HEAD request timeout** reduced from 10 s to 5 s (`HEAD_REQUEST_TIMEOUT_MS`) — most servers respond in < 1 s.
+- **Default `MAX_CONCURRENT_DOWNLOADS`** increased from 5 to 8 in `.env.example`.
+- **`fetchMetadata()` now parses `Content-Disposition`** — the real server-side filename is resolved during the metadata phase (before the TUI) so the file-selection list shows actual filenames rather than Blackboard display text.
+- **`downloadAll()` backward-compat method** now calls `fetchFileMetadata()` before the download loop so files downloaded via this code path also get proper MIME/size info.
+
+### Fixed
+- **Non-file link filtering** — expanded `NAV_HREF_PATTERNS` with 13 additional Blackboard tool/page URL fragments (`execute/courseMain`, `execute/announcement`, `execute/blti`, etc.). Added a safe-list for `execute/` URLs: ambiguous links that pass existing heuristics but sit under `execute/` are now rejected unless they also match `/bbcswebdav/` or a known file extension.
+- **`parseContentDisposition()` regex** — tightened the unquoted `filename=` match from `/filename=([^;]+)/i` to `/filename=([^;\r\n"]+)/i` to avoid capturing trailing semicolons.
+- **`discoverFolder()` depth guard message** — changed "stack overflow" to "infinite loops on circular course structures" which accurately describes the guard's purpose.
+- **Missing `#content_listContainer` debug log** — now includes the page URL and `<title>` to identify unexpected pages.
+- **`sanitizeFilename()` trailing-dot behaviour** — added documentation comment explaining the intentional `.replace(/[.\s]+$/, '')` behaviour.
+- **`filterAlreadyDownloaded()` scope** — added documentation comment clarifying that the check is scoped to `file.savePath` (full directory path) so same-name files in different courses are handled correctly.
+
 ## [2.2.0] - 2026-04-07
 
 ### Added

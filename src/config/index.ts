@@ -24,18 +24,20 @@ const ConfigSchema = z.object({
   courseFilter: z.string().optional(),
   maxRetries: z.number().int().nonnegative().default(3),
   retryDelay: z.number().int().nonnegative().default(2000),
+  fileTreePath: z.string().default(''),
 });
 
 /**
  * Load and validate configuration from environment variables
  */
 export function loadConfig(): Config {
+  const downloadDir = process.env.DOWNLOAD_DIR || './downloads';
   const config = {
     username: process.env.BB_USERNAME || '',
     password: process.env.BB_PASSWORD || '',
     baseUrl: process.env.BB_BASE_URL || 'https://shs.blackboardchina.cn',
     loginUrl: process.env.BB_LOGIN_URL || 'https://shs.blackboardchina.cn/webapps/login/',
-    downloadDir: process.env.DOWNLOAD_DIR || './downloads',
+    downloadDir,
     maxConcurrentDownloads: parseInt(process.env.MAX_CONCURRENT_DOWNLOADS || '5', 10),
     downloadTimeout: parseInt(process.env.DOWNLOAD_TIMEOUT || '60000', 10),
     browserType: (process.env.BROWSER_TYPE || 'chromium') as 'chromium' | 'firefox' | 'webkit',
@@ -47,6 +49,7 @@ export function loadConfig(): Config {
     courseFilter: process.env.COURSE_FILTER,
     maxRetries: parseInt(process.env.MAX_RETRIES || '3', 10),
     retryDelay: parseInt(process.env.RETRY_DELAY || '2000', 10),
+    fileTreePath: process.env.FILE_TREE_PATH || path.join(downloadDir, 'file_tree.json'),
   };
 
   // Validate configuration

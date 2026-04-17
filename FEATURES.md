@@ -68,6 +68,16 @@ This document outlines all features implemented in the Whiteboard Downloader v2.
 - [x] **URL Construction Fix** - Fixed invalid URL errors caused by leading spaces and relative URLs
 - [x] **Enhanced Debug Logging** - Added detailed logging throughout scraper, auth, and downloader
 
+### v2.3.0 Features
+- [x] **Dynamic File Extension Detection** - Filenames without extensions are automatically resolved using Content-Type MIME headers and Content-Disposition; disagreements between filename extension and MIME type are corrected
+- [x] **Debug HTML Dump** - When `LOG_LEVEL=debug`, every page scanned for files gets its full HTML structure written to `logs/debug-*.html` for troubleshooting
+- [x] **Non-File Link Filtering** - Quiz, announcement, grade-book, discussion, and other Blackboard tool pages are filtered out of the download list; ambiguous `execute/` URLs are rejected unless they also match a known-file heuristic
+- [x] **Faster Scraping** - Replaced `waitUntil: 'networkidle'` with `'domcontentloaded'` across all navigation, cutting 5-30 seconds per page on analytics-heavy Blackboard pages
+- [x] **Media File Exclusion** - Audio/video files (mp4, mp3, mov, avi, mkv, wmv, webm, flv, wav, aac, ogg, m4a, m4v) are excluded from discovery by URL extension and by MIME type during metadata fetch
+- [x] **JSON File-Tree Cache** - `file_tree.json` mirrors Blackboard's course/section/folder hierarchy; replaces per-run filesystem scan with O(1) lookups; updated after each download; built from disk on first run for seamless migration
+- [x] **Log Rotation** - Log files are automatically rotated at 5 MB with 3 rotated files kept
+- [x] **Stale Pending Reset** - Records stuck in 'pending' status from interrupted runs are automatically reset to 'failed' on startup
+
 ## 🚧 In Progress / Planned Features
 
 ### Potential Future Enhancements

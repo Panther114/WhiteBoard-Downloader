@@ -67,6 +67,8 @@ export interface Config {
   courseFilter?: string;
   maxRetries: number;
   retryDelay: number;
+  /** Path to the JSON file-tree cache. Defaults to <downloadDir>/file_tree.json. */
+  fileTreePath: string;
 }
 
 export interface DownloadProgress {
@@ -85,4 +87,36 @@ export interface DatabaseRecord {
   size?: number;
   downloadedAt?: Date;
   error?: string;
+}
+
+// ---------------------------------------------------------------------------
+// File-tree cache — mirrors Blackboard's course / section / folder hierarchy
+// ---------------------------------------------------------------------------
+
+export interface FileTreeEntry {
+  url: string;
+  localPath: string;
+  size?: number;
+  downloadedAt: string; // ISO-8601
+  mimeType?: string;
+}
+
+export interface FileTreeFolder {
+  files: Record<string, FileTreeEntry>;
+}
+
+export interface FileTreeSection {
+  folders: Record<string, FileTreeFolder>;
+}
+
+export interface FileTreeCourse {
+  sections: Record<string, FileTreeSection>;
+}
+
+export interface FileTree {
+  /** Schema version for future migrations. */
+  version: number;
+  /** ISO-8601 timestamp of last update. */
+  generatedAt: string;
+  courses: Record<string, FileTreeCourse>;
 }

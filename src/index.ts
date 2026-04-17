@@ -1,12 +1,13 @@
 import path from 'path';
 import { EventEmitter } from 'events';
-import { Config, Course, DiscoveredFile, DownloadableFile } from './types';
+import { Config, Course, DiscoveredFile, DownloadableFile, FileTree } from './types';
 import { BlackboardAuth } from './auth';
 import { BlackboardScraper } from './scraper';
 import { FileDownloader } from './downloader';
 import { DownloadDatabase } from './database';
 import { initLogger, log } from './utils/logger';
 import { ensureDirectory } from './utils/helpers';
+import { loadFileTree, saveFileTree, buildFileTreeFromDisk } from './fileTree';
 
 /** Maximum folder-nesting depth before recursion is aborted. */
 const MAX_DISCOVER_DEPTH = 10;
@@ -17,6 +18,7 @@ export class WhiteboardDownloader extends EventEmitter {
   private scraper: BlackboardScraper | null = null;
   private downloader: FileDownloader | null = null;
   private db: DownloadDatabase;
+  private fileTree: FileTree;
 
   constructor(config: Config) {
     super();
@@ -27,6 +29,29 @@ export class WhiteboardDownloader extends EventEmitter {
 
     this.auth = new BlackboardAuth(config);
     this.db = new DownloadDatabase(config.databasePath);
+
+    // Load or build the file tree cache
+    this.fileTree = loadFileTree(config.fileTreePath);
+    if (Object.keys(this.fileTree.courses).length === 0) {
+      // No existing tree — migrate from disk
+      log.info('No file tree cache found — scanning downloads folder to build initial tree...');
+      this.fileTree = buildFileTreeFromDisk(config.downloadDir);
+      saveFileTree(this.fileTree, config.fileTreePath);
+    }
+  }
+
+  /**
+   * Return the loaded file tree (for use by CLI or other consumers).
+   */
+  getFileTree(): FileTree {
+    return this.fileTree;
+  }
+
+  /**
+   * Persist the current in-memory file tree to disk.
+   */
+  saveFileTree(): void {
+    saveFileTree(this.fileTree, this.config.fileTreePath);
   }
 
   /**
@@ -42,7 +67,7 @@ export class WhiteboardDownloader extends EventEmitter {
     const cookies = await this.auth.getCookies();
 
     this.scraper = new BlackboardScraper(page, this.config);
-    this.downloader = new FileDownloader(this.config, cookies, this.db);
+    this.downloader = new FileDownloader(this.config, cookies, this.db, this.fileTree);
 
     // Forward FileDownloader events to WhiteboardDownloader
     this.downloader.on('download:start', (data) => this.emit('download:start', data));
@@ -158,7 +183,7 @@ export class WhiteboardDownloader extends EventEmitter {
     if (depth >= MAX_DISCOVER_DEPTH) {
       log.warn(
         `    Max folder depth (${MAX_DISCOVER_DEPTH}) reached in "${sectionName}" — ` +
-          'stopping recursion to prevent stack overflow.'
+          'stopping recursion to prevent infinite loops on circular course structures.'
       );
       return [];
     }
@@ -259,10 +284,13 @@ export class WhiteboardDownloader extends EventEmitter {
       return;
     }
 
-    log.info(`Processing ${allFiles.length} courses...`);
+    // Fetch metadata (size / MIME) so downloads have proper filenames and types
+    const enriched = await this.fetchFileMetadata(allFiles);
+
+    log.info(`Processing ${enriched.length} files...`);
 
     // Convert DiscoveredFile → DownloadableFile and download in one global batch
-    const downloadable: DownloadableFile[] = allFiles.map(f => ({
+    const downloadable: DownloadableFile[] = enriched.map(f => ({
       name: f.name,
       url: f.url,
       path: f.savePath,

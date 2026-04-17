@@ -2,6 +2,11 @@ import winston from 'winston';
 import path from 'path';
 import fs from 'fs';
 
+/** Maximum size per log file before rotating. */
+const MAX_LOG_SIZE_BYTES = 5 * 1024 * 1024; // 5 MB
+/** Number of rotated log files to keep. */
+const MAX_LOG_FILES = 3;
+
 /**
  * Minimal console-only logger used before `initLogger()` is called.
  * This prevents a hard throw if any module emits a log at import time or
@@ -17,7 +22,9 @@ let logger: winston.Logger = winston.createLogger({
 });
 
 /**
- * Initialize logger with configuration
+ * Initialize logger with configuration.
+ * The file transport uses built-in size-based rotation so that
+ * `whiteboard.log` doesn't grow indefinitely.
  */
 export function initLogger(logLevel: string, logFile: string): winston.Logger {
   // Ensure log directory exists
@@ -44,9 +51,12 @@ export function initLogger(logLevel: string, logFile: string): winston.Logger {
           })
         ),
       }),
-      // File transport
+      // File transport with size-based rotation
       new winston.transports.File({
         filename: logFile,
+        maxsize: MAX_LOG_SIZE_BYTES,
+        maxFiles: MAX_LOG_FILES,
+        tailable: true,
         format: winston.format.combine(
           winston.format.uncolorize(),
           winston.format.json()

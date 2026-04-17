@@ -3,7 +3,12 @@ import path from 'path';
 import fs from 'fs';
 
 /**
- * Sanitize filename for safe filesystem operations
+ * Sanitize filename for safe filesystem operations.
+ *
+ * Note: the trailing-dot strip (`.replace(/[.\s]+$/, '')`) is intentional —
+ * it removes dangling dots left after other sanitisation steps (e.g. "file.")
+ * but does NOT harm real extensions because those are preceded by the base
+ * name (e.g. "report.pdf" stays "report.pdf").
  */
 export function sanitizeFilename(name: string): string {
   if (!name) return 'file';
@@ -138,13 +143,61 @@ export function parseContentDisposition(header: string): string | null {
     return filenameQuoteMatch[1];
   }
 
-  // Try filename= without quotes
-  const filenameMatch = header.match(/filename=([^;]+)/i);
+  // Try filename= without quotes — stop at semicolons and newlines
+  const filenameMatch = header.match(/filename=([^;\r\n"]+)/i);
   if (filenameMatch) {
     return filenameMatch[1].trim();
   }
 
   return null;
+}
+
+/**
+ * Dump the page structure of #content_listContainer (or the full body if
+ * that element is absent) to a timestamped HTML file under `./logs/`.
+ * Only produces output when `LOG_LEVEL=debug`.
+ *
+ * @param page   Playwright `Page` instance
+ * @param label  Short label used in the filename (e.g. "getDownloadableFiles")
+ */
+export async function dumpPageStructure(
+  page: import('playwright').Page,
+  label: string,
+): Promise<void> {
+  try {
+    // page.evaluate runs in browser context — return plain strings
+    const containerHtml: string = await page.evaluate(
+      `(function() {
+        var c = document.querySelector('#content_listContainer');
+        if (c) return c.outerHTML;
+        return document.body ? document.body.outerHTML : '<html>empty</html>';
+      })()`
+    );
+
+    const anchorSummary: string = await page.evaluate(
+      `(function() {
+        var anchors = Array.from(document.querySelectorAll('a[href]'));
+        return anchors.map(function(a) {
+          var href = a.getAttribute('href') || '';
+          var target = a.getAttribute('target') || '';
+          var cls = a.getAttribute('class') || '';
+          var text = (a.textContent || '').trim().substring(0, 120);
+          return '<tr><td>' + href + '</td><td>' + target + '</td><td>' + cls + '</td><td>' + text + '</td></tr>';
+        }).join('\\n');
+      })()`
+    );
+
+    const html = `<!-- Debug dump: ${label} -->\n<!-- URL: ${page.url()} -->\n<!-- Time: ${new Date().toISOString()} -->\n\n<h2>Anchor summary</h2>\n<table border="1"><tr><th>href</th><th>target</th><th>class</th><th>text</th></tr>\n${anchorSummary}\n</table>\n\n<h2>Container HTML</h2>\n${containerHtml}`;
+
+    const logsDir = path.resolve('./logs');
+    ensureDirectory(logsDir);
+    const ts = new Date().toISOString().replace(/[:.]/g, '-');
+    const safeName = label.replace(/[^a-zA-Z0-9_-]/g, '_');
+    const filePath = path.join(logsDir, `debug-${ts}-${safeName}.html`);
+    fs.writeFileSync(filePath, html, 'utf-8');
+  } catch {
+    // Never let debug logging crash the main flow.
+  }
 }
 
 /**
