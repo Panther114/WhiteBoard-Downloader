@@ -25,10 +25,13 @@ import { DownloadDatabase } from '../database';
 const INACTIVITY_TIMEOUT_MS = 30_000;
 
 /** Timeout for HEAD requests used to fetch file metadata. */
-const HEAD_REQUEST_TIMEOUT_MS = 10_000;
+const HEAD_REQUEST_TIMEOUT_MS = 5_000;
 
 /** The generic-binary MIME extension returned by mime-types for unrecognised content. */
 const GENERIC_BINARY_EXTENSION = 'bin';
+
+/** MIME type prefixes that indicate audio/video content (blocked). */
+const BLOCKED_MEDIA_MIME_PREFIXES = ['video/', 'audio/'];
 
 export class FileDownloader extends EventEmitter {
   private axios: AxiosInstance;
@@ -66,29 +69,57 @@ export class FileDownloader extends EventEmitter {
   // ---------------------------------------------------------------------------
 
   /**
-   * Send HEAD requests for every file to populate size and mimeType without
-   * downloading the file body. Runs concurrently up to maxConcurrentDownloads.
+   * Send HEAD requests for every file to populate size, mimeType, and the
+   * real filename (from Content-Disposition) without downloading the file body.
+   * Runs concurrently up to maxConcurrentDownloads.
+   *
+   * Media files (audio/video MIME types) are filtered out automatically.
    * Files where the server does not support HEAD are returned unchanged.
    */
   async fetchMetadata(files: DiscoveredFile[]): Promise<DiscoveredFile[]> {
     const headLimit = pLimit(this.config.maxConcurrentDownloads);
 
-    return Promise.all(
+    const results = await Promise.all(
       files.map(file =>
-        headLimit(async (): Promise<DiscoveredFile> => {
+        headLimit(async (): Promise<DiscoveredFile | null> => {
           try {
             const response = await this.axios.head(file.url, { timeout: HEAD_REQUEST_TIMEOUT_MS });
             const rawLength = response.headers['content-length'];
             const size = rawLength ? parseInt(rawLength, 10) : undefined;
             const rawType = response.headers['content-type'] || '';
             const mimeType = rawType.split(';')[0].trim() || undefined;
+
+            // Block media files by MIME type
+            if (mimeType && BLOCKED_MEDIA_MIME_PREFIXES.some(p => mimeType.startsWith(p))) {
+              log.debug(`Filtering media file (MIME: ${mimeType}): ${file.name} -> ${file.url}`);
+              return null;
+            }
+
             const extFromMime = mimeType ? mime.extension(mimeType) : false;
             const extFromName = path.extname(file.name).slice(1);
             const fileType = (
               (extFromMime && extFromMime !== GENERIC_BINARY_EXTENSION ? extFromMime : extFromName) || undefined
             )?.toUpperCase();
 
-            return { ...file, size: size || undefined, mimeType, fileType };
+            // Parse Content-Disposition to get the real server-side filename
+            let resolvedName = file.name;
+            const contentDisposition = response.headers['content-disposition'];
+            if (contentDisposition) {
+              const parsed = parseContentDisposition(contentDisposition);
+              if (parsed) resolvedName = parsed;
+            }
+
+            // If the resolved name still has no extension, append from MIME
+            if (!path.extname(resolvedName) && extFromMime && extFromMime !== GENERIC_BINARY_EXTENSION) {
+              resolvedName += `.${extFromMime}`;
+            }
+
+            log.debug(
+              `Metadata for "${file.name}": size=${size ?? '?'}, mime=${mimeType ?? '?'}, ` +
+              `resolvedName="${resolvedName}", fileType=${fileType ?? '?'}`
+            );
+
+            return { ...file, name: resolvedName, size: size || undefined, mimeType, fileType };
           } catch {
             // HEAD not supported or network error — return file as-is.
             return file;
@@ -96,6 +127,9 @@ export class FileDownloader extends EventEmitter {
         })
       )
     );
+
+    // Filter out null entries (blocked media files)
+    return results.filter((f): f is DiscoveredFile => f !== null);
   }
 
   // ---------------------------------------------------------------------------
@@ -133,6 +167,16 @@ export class FileDownloader extends EventEmitter {
         // Determine the final filename (prefer Content-Disposition, then URL).
         let filename = file.name;
         const contentDisposition = response.headers['content-disposition'];
+        const contentType = response.headers['content-type'];
+
+        // Log all relevant headers at debug level for troubleshooting
+        log.debug(
+          `Download headers for "${file.name}": ` +
+          `Content-Disposition="${contentDisposition ?? '(none)'}",  ` +
+          `Content-Type="${contentType ?? '(none)'}",  ` +
+          `Content-Length="${response.headers['content-length'] ?? '(none)'}"`
+        );
+
         if (contentDisposition) {
           const parsed = parseContentDisposition(contentDisposition);
           if (parsed) filename = parsed;
@@ -141,12 +185,30 @@ export class FileDownloader extends EventEmitter {
           filename = extractFilenameFromUrl(file.url);
         }
 
-        // Append extension from Content-Type if filename has none.
-        if (!path.extname(filename)) {
-          const contentType = response.headers['content-type'];
-          if (contentType) {
-            const ext = mime.extension(contentType.split(';')[0].trim());
-            if (ext) filename += `.${ext}`;
+        // Extension resolution: ensure the filename has a valid extension.
+        // 1. If the filename already has an extension, validate it against Content-Type.
+        // 2. If no extension or the extension is a generic placeholder, append from MIME.
+        const existingExt = path.extname(filename).slice(1).toLowerCase();
+        if (contentType) {
+          const mimeExt = mime.extension(contentType.split(';')[0].trim());
+          if (!existingExt) {
+            // No extension at all → append from MIME
+            if (mimeExt && mimeExt !== GENERIC_BINARY_EXTENSION) {
+              filename += `.${mimeExt}`;
+              log.debug(`Appended MIME extension: "${filename}" (from ${contentType})`);
+            }
+          } else if (
+            mimeExt &&
+            mimeExt !== GENERIC_BINARY_EXTENSION &&
+            existingExt !== mimeExt &&
+            // Don't "fix" close variants like doc/docx, xls/xlsx, ppt/pptx
+            !existingExt.startsWith(mimeExt) &&
+            !mimeExt.startsWith(existingExt)
+          ) {
+            // Extension disagrees with MIME — prefer MIME-derived extension
+            const base = path.basename(filename, path.extname(filename));
+            filename = `${base}.${mimeExt}`;
+            log.debug(`Corrected extension: "${filename}" (MIME ${contentType} → .${mimeExt})`);
           }
         }
 

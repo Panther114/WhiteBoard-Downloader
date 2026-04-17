@@ -492,6 +492,11 @@ program
  * Remove files whose sanitized name already exists in the target directory on
  * disk.  This keeps the TUI clean by only showing files that still need to be
  * downloaded.
+ *
+ * Note: the check compares within `file.savePath` (the full local directory
+ * including course/section path), so two different Blackboard files with the
+ * same display name in different courses are handled correctly — they live in
+ * separate directories and won't shadow each other.
  */
 function filterAlreadyDownloaded(
   files: DiscoveredFile[]

@@ -158,7 +158,7 @@ export class WhiteboardDownloader extends EventEmitter {
     if (depth >= MAX_DISCOVER_DEPTH) {
       log.warn(
         `    Max folder depth (${MAX_DISCOVER_DEPTH}) reached in "${sectionName}" — ` +
-          'stopping recursion to prevent stack overflow.'
+          'stopping recursion to prevent infinite loops on circular course structures.'
       );
       return [];
     }
@@ -259,10 +259,13 @@ export class WhiteboardDownloader extends EventEmitter {
       return;
     }
 
-    log.info(`Processing ${allFiles.length} courses...`);
+    // Fetch metadata (size / MIME) so downloads have proper filenames and types
+    const enriched = await this.fetchFileMetadata(allFiles);
+
+    log.info(`Processing ${enriched.length} files...`);
 
     // Convert DiscoveredFile → DownloadableFile and download in one global batch
-    const downloadable: DownloadableFile[] = allFiles.map(f => ({
+    const downloadable: DownloadableFile[] = enriched.map(f => ({
       name: f.name,
       url: f.url,
       path: f.savePath,

@@ -42,6 +42,24 @@ export class DownloadDatabase {
       CREATE INDEX IF NOT EXISTS idx_url ON downloads(url);
       CREATE INDEX IF NOT EXISTS idx_status ON downloads(status);
     `);
+
+    // On startup, reset any lingering 'pending' records to 'failed' so they
+    // show up in the retry queue rather than inflating statistics.
+    this.markAllPendingAsFailed();
+  }
+
+  /**
+   * Reset all records with status='pending' to status='failed'.
+   * This runs once at startup to clean up records from previous interrupted runs.
+   */
+  private markAllPendingAsFailed(): void {
+    const stmt = this.db.prepare(
+      `UPDATE downloads SET status = 'failed', error = 'Interrupted (pending at startup)', updated_at = CURRENT_TIMESTAMP WHERE status = 'pending'`
+    );
+    const result = stmt.run();
+    if (result.changes > 0) {
+      log.info(`Reset ${result.changes} stale pending record(s) to failed`);
+    }
   }
 
   /**
