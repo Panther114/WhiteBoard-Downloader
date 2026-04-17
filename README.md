@@ -33,8 +33,8 @@ Modern, async-first automation tool to download course materials from **SHSID Bl
 
 - ✅ **Automatic Authentication**: Handles login and session management
 - ✅ **Recursive Navigation**: Automatically traverses course structure and subfolders
-- ✅ **Smart File Naming**: Extracts proper filenames from Content-Disposition headers
-- ✅ **Duplicate Prevention**: Tracks downloads in database to skip already-downloaded files
+- ✅ **Smart File Naming**: Extracts proper filenames from Content-Disposition headers with dynamic extension detection
+- ✅ **Duplicate Prevention**: Tracks downloads in database and JSON file-tree cache to skip already-downloaded files
 - ✅ **Concurrent Downloads**: Download multiple files in parallel (configurable)
 - ✅ **Automatic Retry**: Retries failed downloads with exponential backoff
 - ✅ **Download Progress GUI**: Live multi-bar progress display (file name, size, percentage)
@@ -44,6 +44,8 @@ Modern, async-first automation tool to download course materials from **SHSID Bl
 - ✅ **Course Filtering**: Filter courses by regex pattern
 - ✅ **Organized Structure**: Maintains Blackboard's folder hierarchy
 - ✅ **Resume Capability**: Resume interrupted downloads from where you left off
+- ✅ **Media File Exclusion**: Audio/video files (mp4, mp3, mov, etc.) are automatically excluded from discovery and download
+- ✅ **File Tree Cache**: JSON-based file-tree cache (`file_tree.json`) mirrors Blackboard's hierarchy for fast duplicate detection
 - ✅ **Cross-Platform**: Works on Windows, macOS, and Linux
 - ✅ **Docker Support**: Run in isolated container environment
 - ✅ **One-Click Launch**: Double-click launcher scripts with desktop shortcut support
@@ -214,6 +216,7 @@ All configuration can be set via `.env` file or environment variables:
 | `COURSE_FILTER` | Course regex filter | *(none)* |
 | `MAX_RETRIES` | Max retry attempts | `3` |
 | `RETRY_DELAY` | Retry delay (ms) | `2000` |
+| `FILE_TREE_PATH` | JSON file-tree cache path | `<DOWNLOAD_DIR>/file_tree.json` |
 
 ### CLI Arguments
 
@@ -290,6 +293,29 @@ rm whiteboard.db
 npm start
 ```
 
+### Media File Exclusion
+
+Audio and video files (mp4, mp3, mov, avi, mkv, wmv, webm, flv, wav, aac, ogg, m4a, m4v) are automatically excluded from discovery and never appear in the download selection list. This prevents accidentally downloading large lecture recordings or media files.
+
+### File Tree Cache
+
+The downloader maintains a `file_tree.json` file in your download directory that mirrors Blackboard's course/section/folder hierarchy. This provides:
+
+- **Fast duplicate detection**: Instead of scanning every file on disk, the program reads the JSON cache — O(1) lookup per file.
+- **Structure visibility**: Open `file_tree.json` to see exactly what has been downloaded, organized by course and section.
+- **Automatic migration**: On first run (or if the file is deleted), the program scans your existing download folder and builds the cache automatically.
+
+To reset the cache (e.g., after manually deleting files):
+```bash
+rm downloads/file_tree.json
+# Next run will rebuild from disk
+```
+
+To customise the cache location:
+```env
+FILE_TREE_PATH=./my-custom-path/file_tree.json
+```
+
 ---
 
 ## 🐳 Docker
@@ -364,9 +390,10 @@ whiteboard-downloader/
 │   ├── database/          # SQLite database for tracking
 │   ├── config/            # Configuration management
 │   ├── utils/             # Helper utilities
-│   │   ├── logger.ts      # Winston logging
-│   │   └── helpers.ts     # File operations
+│   │   ├── logger.ts      # Winston logging (with rotation)
+│   │   └── helpers.ts     # File operations & debug helpers
 │   ├── types/             # TypeScript type definitions
+│   ├── fileTree.ts        # JSON file-tree cache management
 │   ├── index.ts           # Main application class
 │   └── cli.ts             # CLI interface
 ├── legacy/                # Original Python implementation
@@ -679,8 +706,7 @@ Based on the legacy Python code analysis, the following questions remain about B
 
 3. **Subfolder Depth Limit**:
    - **Question**: Is there a maximum nesting depth for folders?
-   - **Current Implementation**: Recursive with no depth limit
-   - **Potential Issue**: Stack overflow on deeply nested structures (unlikely)
+   - **Current Implementation**: Recursive with depth limit of 10 to prevent infinite loops on circular structures
 
 4. **Special Characters in Filenames**:
    - **Question**: What's the full set of problematic characters in Blackboard filenames?
