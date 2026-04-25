@@ -354,7 +354,7 @@ export function App() {
           <div className="hero-main">
             <div className="hero-title-row">
               <h1>BlackboardChina Downloader</h1>
-              <div className="hero-version">Version {version || '...'}</div>
+              <div className="hero-version">Version {version || 'Loading...'}</div>
             </div>
             {compactHeader ? (
               <p className="hero-disclaimer hero-compact-note">

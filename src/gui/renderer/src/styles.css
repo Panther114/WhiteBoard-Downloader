@@ -397,7 +397,7 @@ label {
   grid-template-columns: 36px minmax(180px, 2fr) minmax(72px, 0.8fr) minmax(86px, 0.9fr) minmax(180px, 2fr) minmax(90px, 0.9fr);
   gap: 8px;
   padding: 7px 9px;
-  border-bottom: 1px solid rgba(236, 242, 251, 1);
+  border-bottom: 1px solid var(--surface-border);
   align-items: center;
   font-size: 0.8rem;
 }
