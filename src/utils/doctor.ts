@@ -81,11 +81,6 @@ export function isConfigReadyForLaunch(envPath: string): ConfigReadyForLaunchRes
     return { ok: false, reason: 'Blackboard credentials missing or placeholder values' };
   }
 
-  const downloadDir = (env.DOWNLOAD_DIR || './downloads').trim();
-  if (!downloadDir) {
-    return { ok: false, reason: 'DOWNLOAD_DIR is missing and default could not be applied' };
-  }
-
   return { ok: true };
 }
 

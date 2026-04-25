@@ -52,20 +52,19 @@ describe('doctor helpers', () => {
     fs.rmSync(tmpRoot, { recursive: true, force: true });
   });
 
-  it('config-check helper validity does not depend on npm availability', () => {
+  it('config-check helper validity does not depend on npm availability checks', () => {
     const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'wb-doctor-test-path-'));
     const envPath = path.join(tmpRoot, '.env');
     fs.writeFileSync(envPath, 'BB_USERNAME=G123456\nBB_PASSWORD=secret-pass\n', { encoding: 'utf-8' });
 
-    const result = (() => {
-      const originalPath = process.env.PATH;
-      try {
-        process.env.PATH = '';
-        return isConfigReadyForLaunch(envPath);
-      } finally {
-        process.env.PATH = originalPath;
-      }
-    })();
+    const originalPath = process.env.PATH;
+    let result: ReturnType<typeof isConfigReadyForLaunch> = { ok: false };
+    try {
+      process.env.PATH = '';
+      result = isConfigReadyForLaunch(envPath);
+    } finally {
+      process.env.PATH = originalPath;
+    }
 
     expect(result.ok).toBe(true);
 
