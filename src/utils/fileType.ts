@@ -101,7 +101,7 @@ export function normalizeSupportedFilename(
 
     if (extFromMime) {
       const extWithDot = path.extname(safeName);
-      const baseName = extWithDot ? safeName.slice(0, -extWithDot.length) : safeName;
+      const baseName = path.basename(safeName, extWithDot);
       const normalizedBase = baseName || 'file';
       return {
         accepted: true,
