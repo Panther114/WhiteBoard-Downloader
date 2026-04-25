@@ -57,14 +57,15 @@ describe('doctor helpers', () => {
     const envPath = path.join(tmpRoot, '.env');
     fs.writeFileSync(envPath, 'BB_USERNAME=G123456\nBB_PASSWORD=secret-pass\n', 'utf-8');
 
-    const originalPath = process.env.PATH;
-    let result: ReturnType<typeof isConfigReadyForLaunch> = { ok: false };
-    try {
-      process.env.PATH = '';
-      result = isConfigReadyForLaunch(envPath);
-    } finally {
-      process.env.PATH = originalPath;
-    }
+    const result = (() => {
+      const originalPath = process.env.PATH;
+      try {
+        process.env.PATH = '';
+        return isConfigReadyForLaunch(envPath);
+      } finally {
+        process.env.PATH = originalPath;
+      }
+    })();
 
     expect(result.ok).toBe(true);
 
