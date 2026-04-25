@@ -2,7 +2,7 @@ import path from 'path';
 import fs from 'fs';
 import { ChildProcessWithoutNullStreams, spawn, spawnSync } from 'child_process';
 import { app, BrowserWindow, ipcMain, shell } from 'electron';
-import { getConfig } from '../config';
+import { compactConfigOverrides, getConfig } from '../config';
 import { BlackboardAuth } from '../auth';
 import { readEnvFile, writeEnvFile, hasValidCredentials } from '../utils/envFile';
 import {
@@ -443,7 +443,7 @@ app.whenReady().then(() => {
     Object.assign(process.env, effectiveEnv);
 
     if (payload.testLogin) {
-      const cfg = getConfig({ headless: Boolean(payload.headless) });
+      const cfg = getConfig(compactConfigOverrides({ headless: payload.headless }));
       let auth: BlackboardAuth | null = null;
       try {
         auth = new BlackboardAuth(cfg);
@@ -484,7 +484,7 @@ app.whenReady().then(() => {
       username: payload?.username,
       password: payload?.password,
       downloadDir: payload?.downloadDir,
-      headless: payload?.headless ?? true,
+      headless: payload?.headless,
     });
   });
 

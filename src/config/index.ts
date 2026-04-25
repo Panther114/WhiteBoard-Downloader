@@ -58,10 +58,25 @@ export function loadConfig(): Config {
   return ConfigSchema.parse(config);
 }
 
+export function stripUndefinedOverrides<T extends Record<string, unknown>>(obj?: Partial<T>): Partial<T> {
+  if (!obj) return {};
+  return Object.fromEntries(Object.entries(obj).filter(([, value]) => value !== undefined)) as Partial<T>;
+}
+
+export function compactConfigOverrides(input: Partial<Config>): Partial<Config> {
+  const out: Partial<Config> = {};
+  for (const [key, value] of Object.entries(input) as Array<[keyof Config, unknown]>) {
+    if (value === undefined || value === null) continue;
+    if (typeof value === 'string' && value.trim() === '') continue;
+    (out as Record<keyof Config, unknown>)[key] = value;
+  }
+  return out;
+}
+
 /**
  * Get configuration with optional overrides
  */
 export function getConfig(overrides?: Partial<Config>): Config {
   const baseConfig = loadConfig();
-  return { ...baseConfig, ...overrides };
+  return { ...baseConfig, ...stripUndefinedOverrides(overrides) };
 }
