@@ -31,7 +31,7 @@ describe('doctor helpers', () => {
   it('config-check helper fails for placeholder credentials', () => {
     const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'wb-doctor-test-placeholder-'));
     const envPath = path.join(tmpRoot, '.env');
-    fs.writeFileSync(envPath, 'BB_USERNAME=your_g_number\nBB_PASSWORD=your_password\n', 'utf-8');
+    fs.writeFileSync(envPath, 'BB_USERNAME=your_g_number\nBB_PASSWORD=your_password\n', { encoding: 'utf-8' });
 
     const result = isConfigReadyForLaunch(envPath);
     expect(result.ok).toBe(false);
@@ -43,7 +43,7 @@ describe('doctor helpers', () => {
   it('config-check helper passes for valid credentials', () => {
     const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'wb-doctor-test-valid-'));
     const envPath = path.join(tmpRoot, '.env');
-    fs.writeFileSync(envPath, 'BB_USERNAME=G123456\nBB_PASSWORD=secret-pass\n', 'utf-8');
+    fs.writeFileSync(envPath, 'BB_USERNAME=G123456\nBB_PASSWORD=secret-pass\n', { encoding: 'utf-8' });
 
     const result = isConfigReadyForLaunch(envPath);
     expect(result.ok).toBe(true);
@@ -55,7 +55,7 @@ describe('doctor helpers', () => {
   it('config-check helper validity does not depend on npm availability', () => {
     const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'wb-doctor-test-path-'));
     const envPath = path.join(tmpRoot, '.env');
-    fs.writeFileSync(envPath, 'BB_USERNAME=G123456\nBB_PASSWORD=secret-pass\n', 'utf-8');
+    fs.writeFileSync(envPath, 'BB_USERNAME=G123456\nBB_PASSWORD=secret-pass\n', { encoding: 'utf-8' });
 
     const result = (() => {
       const originalPath = process.env.PATH;

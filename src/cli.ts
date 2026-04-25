@@ -247,9 +247,9 @@ program
         add('fail', `Node.js version unsupported (${process.version}); required >=18 and <24`);
       }
 
-      const npmVersion = runCommandForStatus('npm', ['--version']);
-      if (npmVersion.status === 0) {
-        add('pass', `npm available (${npmVersion.stdout.trim()})`);
+      const npmCheck = runCommandForStatus('npm', ['--version']);
+      if (npmCheck.status === 0) {
+        add('pass', `npm available (${npmCheck.stdout.trim()})`);
       } else {
         add('fail', 'npm is not available in PATH');
       }
