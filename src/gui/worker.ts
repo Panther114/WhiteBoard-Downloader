@@ -107,7 +107,9 @@ async function startWorkflow(payload: WorkerCommandMap['startWorkflow'] = {}): P
     includeNonSubjectCourses: true,
   });
 
-  if (!config.username.trim() || !config.password.trim()) {
+  const hasUsername = typeof config.username === 'string' && config.username.trim() !== '';
+  const hasPassword = typeof config.password === 'string' && config.password.trim() !== '';
+  if (!hasUsername || !hasPassword) {
     throw new Error('Blackboard credentials are missing. Open Setup and save your username/password.');
   }
 
