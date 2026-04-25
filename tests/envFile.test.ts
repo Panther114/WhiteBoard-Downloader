@@ -45,4 +45,22 @@ describe('env file writing behavior', () => {
     expect(text).toContain('BB_PASSWORD=new-pass');
     expect(text).not.toContain('OLD_KEY=yes');
   });
+
+  it('keeps existing password when runtime env is assigned from reloaded env', () => {
+    const envPath = path.join(tmpRoot, '.env.runtime');
+    fs.writeFileSync(envPath, 'BB_USERNAME=G12345\nBB_PASSWORD=secret123\n', 'utf-8');
+
+    const values = {
+      BB_USERNAME: 'G12345',
+      BB_PASSWORD: '',
+    };
+
+    writeEnvFile(envPath, values, { preserveEmptyPassword: true });
+    const effectiveEnv = readEnvFile(envPath);
+
+    const runtimeEnv: Record<string, string> = {};
+    Object.assign(runtimeEnv, effectiveEnv);
+
+    expect(runtimeEnv.BB_PASSWORD).toBe('secret123');
+  });
 });

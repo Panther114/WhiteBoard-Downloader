@@ -2,6 +2,7 @@ Write-Host "========================================"
 Write-Host "  Whiteboard Downloader Launcher"
 Write-Host "========================================"
 Write-Host ""
+Set-Location -Path $PSScriptRoot
 
 try {
     $nodeVersion = node --version
