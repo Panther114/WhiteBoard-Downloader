@@ -1,28 +1,17 @@
 import path from 'path';
+import {
+  MIME_TO_EXTENSION,
+  SUPPORTED_FILE_TYPE_SET,
+  getSupportedExtensionFromMime,
+} from './fileType';
 
-export const ALLOWED_FILE_EXTENSIONS = new Set([
-  'pdf',
-  'ppt',
-  'pptx',
-  'doc',
-  'docx',
-  'xls',
-  'xlsx',
-]);
+export const ALLOWED_FILE_EXTENSIONS = SUPPORTED_FILE_TYPE_SET;
 
 export const ALLOWED_DOC_EXT_RE = /\.(pdf|pptx?|docx?|xlsx?)$/i;
 const ALLOWED_EXT_PATTERN = Array.from(ALLOWED_FILE_EXTENSIONS).join('|');
 const ALLOWED_EXT_TOKEN_RE = new RegExp(`\\.(${ALLOWED_EXT_PATTERN})\\b`, 'i');
 
-export const ALLOWED_MIME_TYPES = new Set([
-  'application/pdf',
-  'application/msword',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  'application/vnd.ms-powerpoint',
-  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-  'application/vnd.ms-excel',
-  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-]);
+export const ALLOWED_MIME_TYPES = new Set(Object.keys(MIME_TO_EXTENSION));
 
 const BLOCKED_EXTENSIONS = new Set([
   'zip',
@@ -123,8 +112,7 @@ export function getExtensionFromUrlPath(url: string): string | undefined {
 }
 
 export function isAllowedMimeType(mimeType?: string): boolean {
-  if (!mimeType) return false;
-  return ALLOWED_MIME_TYPES.has(mimeType.trim().toLowerCase());
+  return Boolean(getSupportedExtensionFromMime(mimeType));
 }
 
 export function isBlockedMimeType(mimeType?: string): boolean {
