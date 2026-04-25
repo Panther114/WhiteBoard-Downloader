@@ -5,6 +5,7 @@ Use one launcher as your normal entrypoint:
 - `start.bat` (Windows)
 - `start.ps1` (Windows PowerShell)
 - `start.sh` (macOS/Linux)
+- `start-gui.bat` / `start-gui.ps1` / `start-gui.sh` (desktop GUI)
 
 Each launcher now automatically runs bootstrap + setup checks before starting download.
 

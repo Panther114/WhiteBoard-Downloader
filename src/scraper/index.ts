@@ -38,17 +38,6 @@ const NAV_HREF_PATTERNS = [
 /** Known-safe execute/ URL fragments that are actual file downloads. */
 const SAFE_EXECUTE_PATTERNS = ['execute/content'];
 
-/** Course names that are likely organisational pages rather than subject classes. */
-const NON_SUBJECT_COURSE_PATTERNS = [
-  /000\s*high\s*school\s*students/i,
-  /010\s*students/i,
-  /writing\s*center/i,
-  /college\s*counseling/i,
-  /newsletter/i,
-  /\[expired\]/i,
-  /students\s*20\d{2}/i,
-];
-
 /** Subject signals used only for logging / ranking confidence. */
 const LIKELY_SUBJECT_PATTERNS = [
   /chemistry/i,
@@ -202,9 +191,7 @@ export class BlackboardScraper {
 
   /**
    * Get list of courses from the main page.
-   * If COURSE_FILTER is set, only matching courses are returned.
-   * Otherwise, organisational courses are excluded by default unless
-   * includeNonSubjectCourses=true.
+   * Always returns the full discovered list for user-facing selection flows.
    */
   async getCourses(): Promise<Course[]> {
     log.info('Fetching course list...');
@@ -238,8 +225,6 @@ export class BlackboardScraper {
     }
 
     const courses: Course[] = [];
-    const skipped: Array<{ name: string; reason: string }> = [];
-
     for (const { href, text } of rawCourses) {
       if (!href || !text) continue;
 
@@ -247,24 +232,6 @@ export class BlackboardScraper {
       log.debug(`Processing course: "${courseName}" href="${href}"`);
 
       const normalizedName = text.trim();
-
-      if (this.config.courseFilter) {
-        const regex = new RegExp(this.config.courseFilter);
-        if (!regex.test(normalizedName)) {
-          const reason = 'does not match COURSE_FILTER';
-          log.debug(`Skipping course: ${courseName} (${reason})`);
-          skipped.push({ name: courseName, reason });
-          continue;
-        }
-      } else if (!this.config.includeNonSubjectCourses) {
-        const isNonSubject = NON_SUBJECT_COURSE_PATTERNS.some(pattern => pattern.test(normalizedName));
-        if (isNonSubject) {
-          const reason = 'matches non-subject course pattern';
-          log.debug(`Skipping course: ${courseName} (${reason})`);
-          skipped.push({ name: courseName, reason });
-          continue;
-        }
-      }
 
       const cleanHref = href.trim();
       const fullUrl = cleanHref.startsWith('http') ? cleanHref : `${this.config.baseUrl}${cleanHref}`;
@@ -282,14 +249,7 @@ export class BlackboardScraper {
       });
     }
 
-    log.info(`Course discovery: found ${rawCourses.length}, included ${courses.length}, skipped ${skipped.length}`);
-    if (skipped.length > 0) {
-      const details = skipped.map(s => `${s.name} (${s.reason})`).join('; ');
-      log.info(`Skipped courses: ${details}`);
-      log.info(
-        'Override behavior with COURSE_FILTER (regex) or INCLUDE_NON_SUBJECT_COURSES=true to include broad pages.'
-      );
-    }
+    log.info(`Course discovery: found ${rawCourses.length}, included ${courses.length}`);
 
     return courses;
   }

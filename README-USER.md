@@ -7,13 +7,14 @@ Before starting, install Node.js **20.x or 22.x LTS** manually (`24.x` is not su
 1. Download the project ZIP from GitHub Releases.
 2. Unzip it.
 3. Double-click:
-   - **Windows:** `start.bat` (or `start.ps1`)
-   - **macOS/Linux:** `start.sh`
+    - **Windows:** `start.bat` (or `start.ps1`)
+    - **macOS/Linux:** `start.sh`
+   - **Optional GUI launchers:** `start-gui.bat` / `start-gui.ps1` / `start-gui.sh`
 4. Follow setup prompts:
    - Blackboard username / G-number
    - Blackboard password
    - Download folder
-5. Select courses and files in the checkbox screens.
+5. Select courses and files in the checkbox screens (TUI) or GUI screens.
 
 > First run may take extra time while dependencies, build output, and Playwright Chromium are prepared.
 

@@ -71,7 +71,7 @@ Then rerun launcher.
 
 **Fix:**
 1. Check Blackboard account access in browser.
-2. Re-run setup and adjust course filtering.
+2. Re-run setup and confirm credentials.
 3. Use `node dist/cli.js doctor --login`.
 
 ## No files found

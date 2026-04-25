@@ -4,6 +4,8 @@
 
 - `scripts/bootstrap.js`: shared bootstrap logic used by launchers (`npm run bootstrap`)
 - `src/cli.ts`: commands (`setup`, `download`, `doctor`, `config`)
+- `src/workflow/downloadWorkflow.ts`: shared download workflow used by TUI and GUI
+- `src/gui/main.ts` + `src/gui/preload.ts` + `src/gui/renderer/`: desktop GUI entry points
 
 ## Setup and launch flow
 
@@ -12,15 +14,12 @@
 3. Launcher runs `node dist/cli.js doctor --config-only`.
 4. If config check fails, launcher runs `node dist/cli.js setup`.
 5. Launcher runs `node dist/cli.js download`.
+6. GUI launchers run `npm run gui` after the same bootstrap/setup checks.
 
 ## Setup wizard options
 
 - Credentials: `BB_USERNAME`, `BB_PASSWORD`
 - Download directory: `DOWNLOAD_DIR`
-- Course filtering mode:
-  - normal subject courses
-  - phrase match
-  - regex
 - Include non-subject courses: `INCLUDE_NON_SUBJECT_COURSES`
 - Browser mode: `HEADLESS`
 - Supports `--reset` and optional login test (`--test-login`)
