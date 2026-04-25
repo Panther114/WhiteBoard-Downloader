@@ -256,12 +256,18 @@ function sendWorkerCommand<T extends WorkerCommandType>(
   });
 
   return new Promise<WorkerResponseMap[T]>((resolve, reject) => {
+    const activeWorker = worker;
+    if (!activeWorker || !activeWorker.stdin.writable) {
+      reject(new Error('GUI worker is not available'));
+      return;
+    }
+
     pendingWorkerRequests.set(id, {
       resolve: value => resolve(value as WorkerResponseMap[T]),
       reject,
     });
 
-    worker!.stdin.write(message + '\n', writeError => {
+    activeWorker.stdin.write(message + '\n', writeError => {
       if (!writeError) return;
       pendingWorkerRequests.delete(id);
       reject(new Error(normalizeWorkerError(writeError.message)));
