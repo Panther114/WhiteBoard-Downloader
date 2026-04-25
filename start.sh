@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set +e
+set -e
 
 echo "========================================"
 echo "  Whiteboard Downloader Launcher"
@@ -24,8 +24,7 @@ if ! command -v npm >/dev/null 2>&1; then
 fi
 
 echo "[INFO] Running bootstrap..."
-npm run bootstrap
-if [ $? -ne 0 ]; then
+if ! npm run bootstrap; then
   echo ""
   echo "[ERROR] Bootstrap failed. Please follow the on-screen next step."
   read -p "Press Enter to exit..."
@@ -33,11 +32,9 @@ if [ $? -ne 0 ]; then
 fi
 
 echo "[INFO] Checking configuration..."
-node dist/cli.js doctor --config-only >/dev/null 2>&1
-if [ $? -ne 0 ]; then
+if ! node dist/cli.js doctor --config-only >/dev/null 2>&1; then
   echo "[INFO] Setup is missing or invalid. Launching setup wizard..."
-  node dist/cli.js setup
-  if [ $? -ne 0 ]; then
+  if ! node dist/cli.js setup; then
     echo ""
     echo "[ERROR] Setup failed."
     read -p "Press Enter to exit..."
@@ -46,8 +43,7 @@ if [ $? -ne 0 ]; then
 fi
 
 echo "[INFO] Starting downloader..."
-node dist/cli.js download
-if [ $? -ne 0 ]; then
+if ! node dist/cli.js download; then
   echo ""
   echo "[ERROR] The application encountered an error."
   read -p "Press Enter to exit..."
