@@ -1,7 +1,7 @@
 import path from 'path';
 import fs from 'fs';
+import { ChildProcessWithoutNullStreams, spawn, spawnSync } from 'child_process';
 import { app, BrowserWindow, ipcMain, shell } from 'electron';
-import { spawnSync } from 'child_process';
 import { getConfig } from '../config';
 import { BlackboardAuth } from '../auth';
 import { readEnvFile, writeEnvFile, hasValidCredentials } from '../utils/envFile';
@@ -13,30 +13,30 @@ import {
   type DoctorCheck,
   isSupportedNodeVersion,
 } from '../utils/doctor';
-import { RunSummaryReport, writeRunSummary } from '../utils/runSummary';
-import { DownloadWorkflow } from '../workflow/downloadWorkflow';
-import { Course, DiscoveredFile } from '../types';
+import {
+  WorkerCommandMap,
+  WorkerCommandType,
+  WorkerResponseMap,
+  WorkerOutgoingMessage,
+} from './workerProtocol';
 
 const APP_VERSION = '0.8.2';
+const WORKER_NATIVE_MODULE_ERROR =
+  'GUI worker failed to start because a native dependency could not load. Try deleting node_modules and rerunning start-gui.bat.';
 
 let mainWindow: BrowserWindow | null = null;
-let workflow: DownloadWorkflow | null = null;
-let runState = {
-  coursesDiscovered: 0,
-  coursesSelected: 0,
-  filesDiscovered: 0,
-  filesSelected: 0,
-  filesDownloaded: 0,
-  filesSkipped: 0,
-  filesFailed: 0,
-  skippedOnDisk: 0,
-  failedFiles: [] as Array<{ name: string; reason: string }>,
-};
-let runSummaryContext = {
-  startedAt: new Date().toISOString(),
-  logFilePath: './logs/whiteboard.log',
-  downloadDir: './downloads',
-};
+let worker: ChildProcessWithoutNullStreams | null = null;
+let workerStdoutBuffer = '';
+let workerReadyPromise: Promise<void> | null = null;
+let workerReadyResolve: (() => void) | null = null;
+let workerReadyReject: ((error: Error) => void) | null = null;
+let workerBootstrapError = '';
+let requestCounter = 0;
+
+const pendingWorkerRequests = new Map<
+  string,
+  { resolve: (value: unknown) => void; reject: (reason: Error) => void }
+>();
 
 function isDevGui(): boolean {
   return process.argv.includes('--dev');
@@ -45,49 +45,6 @@ function isDevGui(): boolean {
 function sendWorkflowEvent(type: string, payload: unknown): void {
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send('workflow:event', { type, payload });
-  }
-}
-
-function resetRunState(): void {
-  runState = {
-    coursesDiscovered: 0,
-    coursesSelected: 0,
-    filesDiscovered: 0,
-    filesSelected: 0,
-    filesDownloaded: 0,
-    filesSkipped: 0,
-    filesFailed: 0,
-    skippedOnDisk: 0,
-    failedFiles: [],
-  };
-}
-
-function buildRunSummaryReport(runError?: string): RunSummaryReport {
-  return {
-    startedAt: runSummaryContext.startedAt,
-    endedAt: new Date().toISOString(),
-    coursesDiscovered: runState.coursesDiscovered,
-    coursesSelected: runState.coursesSelected,
-    filesDiscovered: runState.filesDiscovered,
-    filesSelected: runState.filesSelected,
-    filesDownloaded: runState.filesDownloaded,
-    filesSkipped: runState.filesSkipped + runState.skippedOnDisk,
-    filesFailed: runState.filesFailed,
-    failedFiles: runState.failedFiles,
-    logFilePath: runSummaryContext.logFilePath,
-    downloadDir: runSummaryContext.downloadDir,
-    runError,
-  };
-}
-
-function writeGuiRunSummarySafely(report: RunSummaryReport): void {
-  try {
-    writeRunSummary(report);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    sendWorkflowEvent('summary:warning', {
-      message: `Run summary could not be written: ${message}`,
-    });
   }
 }
 
@@ -112,11 +69,233 @@ function createWindow(): void {
   }
 }
 
-async function cleanupWorkflow(): Promise<void> {
-  if (workflow) {
-    await workflow.cleanup();
-    workflow = null;
+function runCommandForStatus(
+  command: string,
+  args: string[] = [],
+): { status: number | null; stdout: string; stderr: string } {
+  const result = spawnSync(command, args, {
+    encoding: 'utf-8',
+    shell: process.platform === 'win32',
+  });
+
+  return {
+    status: result.status,
+    stdout: result.stdout || '',
+    stderr: result.stderr || '',
+  };
+}
+
+function isNativeModuleAbiError(message: string): boolean {
+  return (
+    message.includes('NODE_MODULE_VERSION') ||
+    message.includes('ERR_DLOPEN_FAILED') ||
+    message.includes('better_sqlite3') ||
+    message.includes('better-sqlite3')
+  );
+}
+
+function normalizeWorkerError(message: string): string {
+  const trimmed = message.trim();
+  if (isNativeModuleAbiError(trimmed)) {
+    return `${WORKER_NATIVE_MODULE_ERROR}\nOriginal error: ${trimmed}`;
   }
+  return trimmed;
+}
+
+function failPendingWorkerRequests(error: Error): void {
+  for (const request of pendingWorkerRequests.values()) {
+    request.reject(error);
+  }
+  pendingWorkerRequests.clear();
+}
+
+function resolveNodePathFromSystemPath(): string {
+  const lookupCommand = process.platform === 'win32' ? 'where' : 'which';
+  const result = runCommandForStatus(lookupCommand, ['node']);
+  if (result.status === 0) {
+    const firstPath = result.stdout
+      .split(/\r?\n/)
+      .map(line => line.trim())
+      .find(Boolean);
+    if (firstPath) return firstPath;
+  }
+  return 'node';
+}
+
+function getWorkerEnv(): NodeJS.ProcessEnv {
+  return {
+    ...process.env,
+    ...readEnvFile(path.resolve('.env')),
+  };
+}
+
+function handleWorkerMessage(message: WorkerOutgoingMessage): void {
+  if (message.kind === 'ready') {
+    workerReadyResolve?.();
+    workerReadyResolve = null;
+    workerReadyReject = null;
+    workerBootstrapError = '';
+    return;
+  }
+
+  if (message.kind === 'response') {
+    const pending = pendingWorkerRequests.get(message.id);
+    if (!pending) return;
+    pendingWorkerRequests.delete(message.id);
+    if (message.ok) {
+      pending.resolve(message.data);
+    } else {
+      pending.reject(new Error(normalizeWorkerError(message.error || 'Worker command failed')));
+    }
+    return;
+  }
+
+  if (message.kind === 'event') {
+    sendWorkflowEvent(message.type, message.payload);
+    return;
+  }
+
+  if (message.kind === 'log') {
+    sendWorkflowEvent('worker:log', { level: message.level, message: message.message });
+  }
+}
+
+function parseWorkerStdout(chunk: string): void {
+  workerStdoutBuffer += chunk;
+  const lines = workerStdoutBuffer.split('\n');
+  workerStdoutBuffer = lines.pop() || '';
+
+  for (const line of lines) {
+    if (!line.trim()) continue;
+    try {
+      handleWorkerMessage(JSON.parse(line) as WorkerOutgoingMessage);
+    } catch {
+      sendWorkflowEvent('worker:log', {
+        level: 'warn',
+        message: `Worker emitted non-JSON output: ${line}`,
+      });
+    }
+  }
+}
+
+function spawnGuiWorker(): Promise<void> {
+  if (workerReadyPromise) return workerReadyPromise;
+
+  const workerPath = path.join(__dirname, 'worker.js');
+  if (!fs.existsSync(workerPath)) {
+    throw new Error(`GUI worker build output missing (${workerPath})`);
+  }
+
+  const nodePath = resolveNodePathFromSystemPath();
+  worker = spawn(nodePath, [workerPath], {
+    cwd: process.cwd(),
+    env: getWorkerEnv(),
+    stdio: ['pipe', 'pipe', 'pipe'],
+  });
+  worker.stdout.setEncoding('utf-8');
+  worker.stderr.setEncoding('utf-8');
+
+  workerReadyPromise = new Promise<void>((resolve, reject) => {
+    workerReadyResolve = resolve;
+    workerReadyReject = reject;
+  });
+
+  worker.stdout.on('data', chunk => parseWorkerStdout(chunk));
+  worker.stderr.on('data', chunk => {
+    const text = String(chunk);
+    workerBootstrapError += text;
+    sendWorkflowEvent('worker:log', { level: 'error', message: text.trim() });
+  });
+  worker.on('error', err => {
+    const wrapped = new Error(normalizeWorkerError(err.message));
+    workerReadyReject?.(wrapped);
+    workerReadyResolve = null;
+    workerReadyReject = null;
+    workerReadyPromise = null;
+    failPendingWorkerRequests(wrapped);
+    worker = null;
+  });
+  worker.on('exit', (code, signal) => {
+    const bootstrapMessage = normalizeWorkerError(workerBootstrapError.trim());
+    const baseError =
+      code === 0
+        ? new Error('GUI worker exited')
+        : new Error(
+            bootstrapMessage ||
+              `GUI worker exited unexpectedly (code ${code ?? 'unknown'}${
+                signal ? `, signal ${signal}` : ''
+              })`,
+          );
+
+    workerReadyReject?.(baseError);
+    workerReadyResolve = null;
+    workerReadyReject = null;
+    workerReadyPromise = null;
+    workerBootstrapError = '';
+    failPendingWorkerRequests(baseError);
+    worker = null;
+  });
+
+  return workerReadyPromise;
+}
+
+function sendWorkerCommand<T extends WorkerCommandType>(
+  command: T,
+  payload?: WorkerCommandMap[T],
+): Promise<WorkerResponseMap[T]> {
+  if (!worker || !worker.stdin.writable) {
+    return Promise.reject(new Error('GUI worker is not available'));
+  }
+
+  const id = String(++requestCounter);
+  const message = JSON.stringify({
+    kind: 'command',
+    id,
+    command,
+    payload: payload || {},
+  });
+
+  return new Promise<WorkerResponseMap[T]>((resolve, reject) => {
+    const activeWorker = worker;
+    if (!activeWorker || !activeWorker.stdin.writable) {
+      reject(new Error('GUI worker is not available'));
+      return;
+    }
+
+    pendingWorkerRequests.set(id, {
+      resolve: value => resolve(value as WorkerResponseMap[T]),
+      reject,
+    });
+
+    activeWorker.stdin.write(message + '\n', writeError => {
+      if (!writeError) return;
+      pendingWorkerRequests.delete(id);
+      reject(new Error(normalizeWorkerError(writeError.message)));
+    });
+  });
+}
+
+async function invokeWorkerCommand<T extends WorkerCommandType>(
+  command: T,
+  payload?: WorkerCommandMap[T],
+): Promise<WorkerResponseMap[T]> {
+  await spawnGuiWorker();
+  return sendWorkerCommand(command, payload);
+}
+
+async function stopGuiWorker(): Promise<void> {
+  if (!worker) return;
+  try {
+    await sendWorkerCommand('shutdown', {});
+  } catch {
+    // no-op
+  }
+
+  if (worker && !worker.killed) {
+    worker.kill();
+  }
+  worker = null;
+  workerReadyPromise = null;
 }
 
 async function runDoctor(loginTest: boolean): Promise<DoctorCheck[]> {
@@ -124,27 +303,42 @@ async function runDoctor(loginTest: boolean): Promise<DoctorCheck[]> {
   const add = (status: DoctorCheck['status'], message: string, required = true) =>
     checks.push({ status, message, required });
 
-  if (isSupportedNodeVersion(process.version)) {
-    add('pass', `Node.js version supported (${process.version})`);
+  const nodeVersionResult = runCommandForStatus('node', ['--version']);
+  const nodeVersion = nodeVersionResult.stdout.trim();
+  if (nodeVersionResult.status === 0 && isSupportedNodeVersion(nodeVersion)) {
+    add('pass', `System Node.js version supported (${nodeVersion})`);
+  } else if (nodeVersionResult.status === 0) {
+    add('fail', `System Node.js version unsupported (${nodeVersion}); required >=18 and <24`);
   } else {
-    add('fail', `Node.js version unsupported (${process.version}); required >=18 and <24`);
+    add('fail', 'System Node.js is not available in PATH');
   }
 
-  const npmVersion = spawnSync('npm', ['--version'], { encoding: 'utf-8' });
+  const npmVersion = runCommandForStatus('npm', ['--version']);
   if (npmVersion.status === 0) {
     add('pass', `npm available (${npmVersion.stdout.trim()})`);
   } else {
     add('fail', 'npm is not available in PATH');
   }
 
+  add('pass', `Electron runtime Node ${process.version} (informational only)`, false);
+
   const nodeModulesPath = path.resolve('node_modules');
   const hasNodeModules = fs.existsSync(nodeModulesPath);
-  add(hasNodeModules ? 'pass' : 'fail', hasNodeModules ? 'Dependencies installed' : 'Dependencies missing (node_modules not found)');
-
-  const hasBuildOutput = fs.existsSync(path.resolve('dist/cli.js'));
   add(
-    hasBuildOutput ? 'pass' : 'fail',
-    hasBuildOutput ? 'Build output exists (dist/cli.js)' : 'Build output missing (dist/cli.js not found)',
+    hasNodeModules ? 'pass' : 'fail',
+    hasNodeModules ? 'Dependencies installed' : 'Dependencies missing (node_modules not found)',
+  );
+
+  const hasGuiBuildOutput =
+    fs.existsSync(path.resolve('dist/gui/main.js')) &&
+    fs.existsSync(path.resolve('dist/gui/preload.js')) &&
+    fs.existsSync(path.resolve('dist/gui/worker.js')) &&
+    fs.existsSync(path.resolve('dist/gui/renderer/index.html'));
+  add(
+    hasGuiBuildOutput ? 'pass' : 'fail',
+    hasGuiBuildOutput
+      ? 'GUI build output exists (main/preload/worker/renderer)'
+      : 'GUI build output missing (dist/gui/main.js, preload.js, worker.js, renderer/index.html required)',
   );
 
   if (checkPlaywrightChromiumInstalled()) {
@@ -182,8 +376,16 @@ async function runDoctor(loginTest: boolean): Promise<DoctorCheck[]> {
   const loginUrl = env.BB_LOGIN_URL || 'https://shs.blackboardchina.cn/webapps/login/';
   const baseReachable = await checkUrlReachable(baseUrl);
   const loginReachable = await checkUrlReachable(loginUrl);
-  add(baseReachable ? 'pass' : 'warn', `Blackboard base URL ${baseReachable ? 'reachable' : 'unreachable right now'}`, false);
-  add(loginReachable ? 'pass' : 'warn', `Blackboard login URL ${loginReachable ? 'reachable' : 'unreachable right now'}`, false);
+  add(
+    baseReachable ? 'pass' : 'warn',
+    `Blackboard base URL ${baseReachable ? 'reachable' : 'unreachable right now'}`,
+    false,
+  );
+  add(
+    loginReachable ? 'pass' : 'warn',
+    `Blackboard login URL ${loginReachable ? 'reachable' : 'unreachable right now'}`,
+    false,
+  );
 
   if (loginTest) {
     if (!envStatus.validCredentials) {
@@ -237,6 +439,8 @@ app.whenReady().then(() => {
     };
 
     writeEnvFile(envPath, values, { preserveEmptyPassword: true });
+    const effectiveEnv = readEnvFile(envPath);
+    Object.assign(process.env, effectiveEnv);
 
     if (payload.testLogin) {
       const cfg = getConfig({ headless: Boolean(payload.headless) });
@@ -276,106 +480,35 @@ app.whenReady().then(() => {
   });
 
   ipcMain.handle('workflow:start', async (_event, payload) => {
-    await cleanupWorkflow();
-    resetRunState();
-
-    const config = getConfig({
+    return invokeWorkerCommand('startWorkflow', {
       username: payload?.username,
       password: payload?.password,
       downloadDir: payload?.downloadDir,
       headless: payload?.headless ?? true,
-      courseFilter: undefined,
-      includeNonSubjectCourses: true,
     });
-    runSummaryContext = {
-      startedAt: new Date().toISOString(),
-      logFilePath: config.logFile,
-      downloadDir: config.downloadDir,
-    };
-
-    workflow = new DownloadWorkflow(config);
-    const eventNames = [
-      'login:start',
-      'login:success',
-      'login:failure',
-      'courses:discovered',
-      'files:discovery:start',
-      'files:discovery:complete',
-      'files:ready',
-      'download:start',
-      'download:progress',
-      'download:complete',
-      'download:error',
-      'download:skip',
-      'summary:ready',
-    ];
-
-    for (const eventName of eventNames) {
-      workflow.on(eventName, payloadValue => {
-        sendWorkflowEvent(eventName, payloadValue);
-      });
-    }
-
-    workflow.on('download:complete', () => {
-      runState.filesDownloaded += 1;
-    });
-    workflow.on('download:error', (data: { filename: string; error: string }) => {
-      runState.filesFailed += 1;
-      runState.failedFiles.push({ name: data.filename, reason: data.error || 'Unknown error' });
-    });
-    workflow.on('download:skip', () => {
-      runState.filesSkipped += 1;
-    });
-
-    await workflow.initialize();
-    return { ok: true, downloadDir: config.downloadDir, logFile: config.logFile };
   });
 
   ipcMain.handle('workflow:discover-courses', async (_event, payload) => {
-    if (!workflow) throw new Error('Workflow not started');
-    const courses = await workflow.discoverCourses({ filterPattern: payload?.filterPattern });
-    runState.coursesDiscovered = courses.length;
-    return courses;
+    return invokeWorkerCommand('discoverCourses', {
+      filterPattern: payload?.filterPattern,
+    });
   });
 
-  ipcMain.handle('workflow:discover-files', async (_event, payload: { courses: Course[] }) => {
-    if (!workflow) throw new Error('Workflow not started');
-    runState.coursesSelected = payload.courses.length;
-    const result = await workflow.discoverFiles(payload.courses);
-    runState.filesDiscovered = result.discovered.length;
-    runState.skippedOnDisk = result.skippedOnDisk;
-    return result;
+  ipcMain.handle('workflow:discover-files', async (_event, payload) => {
+    return invokeWorkerCommand('discoverFiles', {
+      courses: payload?.courses || [],
+    });
   });
 
-  ipcMain.handle('workflow:download', async (_event, payload: { files: DiscoveredFile[] }) => {
-    if (!workflow) throw new Error('Workflow not started');
-    runState.filesSelected = payload.files.length;
-    try {
-      await workflow.downloadSelected(payload.files);
-    } catch (error) {
-      const runError = error instanceof Error ? error.message : String(error);
-      writeGuiRunSummarySafely(buildRunSummaryReport(runError));
-      throw error;
-    }
-
-    const summary = {
-      coursesDiscovered: runState.coursesDiscovered,
-      coursesSelected: runState.coursesSelected,
-      filesDiscovered: runState.filesDiscovered,
-      filesSelected: runState.filesSelected,
-      filesDownloaded: runState.filesDownloaded,
-      filesSkipped: runState.filesSkipped + runState.skippedOnDisk,
-      filesFailed: runState.filesFailed,
-      failedFiles: runState.failedFiles,
-    };
-    writeGuiRunSummarySafely(buildRunSummaryReport());
-    workflow.emitSummary(summary);
-    return summary;
+  ipcMain.handle('workflow:download', async (_event, payload) => {
+    return invokeWorkerCommand('download', {
+      files: payload?.files || [],
+    });
   });
 
   ipcMain.handle('workflow:cleanup', async () => {
-    await cleanupWorkflow();
-    return { ok: true };
+    if (!worker) return { ok: true };
+    return invokeWorkerCommand('cleanup', {});
   });
 
   ipcMain.handle('paths:get', () => {
@@ -403,6 +536,6 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', async () => {
-  await cleanupWorkflow();
+  await stopGuiWorker();
   if (process.platform !== 'darwin') app.quit();
 });

@@ -131,6 +131,7 @@ function guiBuildHealthy() {
     path.join(ROOT, 'dist', 'cli.js'),
     path.join(ROOT, 'dist', 'gui', 'main.js'),
     path.join(ROOT, 'dist', 'gui', 'preload.js'),
+    path.join(ROOT, 'dist', 'gui', 'worker.js'),
     path.join(ROOT, 'dist', 'gui', 'renderer', 'index.html'),
   ];
   return requiredFiles.every(filePath => fs.existsSync(filePath));

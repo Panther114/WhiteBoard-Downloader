@@ -41,6 +41,7 @@ export function App() {
   const [stage, setStage] = useState<Stage>('welcome');
   const [version, setVersion] = useState('');
   const [status, setStatus] = useState('');
+  const [errorMessage, setErrorMessage] = useState('');
   const [config, setConfig] = useState({
     username: '',
     password: '',
@@ -166,6 +167,21 @@ export function App() {
         ? ((downloadState.completed + downloadState.skipped) / selectedFiles.length) * 100
         : 0;
 
+  const toErrorMessage = (error: unknown): string => {
+    if (error instanceof Error) return error.message;
+    return String(error);
+  };
+
+  async function runWithUiError(action: () => Promise<void>): Promise<void> {
+    setErrorMessage('');
+    try {
+      await action();
+    } catch (error) {
+      setStatus('');
+      setErrorMessage(toErrorMessage(error));
+    }
+  }
+
   async function openDownloads() {
     await window.whiteboardGui.openDownloads();
   }
@@ -175,73 +191,85 @@ export function App() {
   }
 
   async function startFlow() {
-    setStatus('Logging in and discovering courses...');
-    await window.whiteboardGui.workflowStart({
-      username: config.username || undefined,
-      password: config.password || undefined,
-      downloadDir: config.downloadDir,
-      headless: config.headless,
+    await runWithUiError(async () => {
+      setStatus('Logging in and discovering courses...');
+      await window.whiteboardGui.workflowStart({
+        username: config.username || undefined,
+        password: config.password || undefined,
+        downloadDir: config.downloadDir,
+        headless: config.headless,
+      });
+      const discovered = await window.whiteboardGui.discoverCourses();
+      setCourses(discovered);
+      setSelectedCourseIds(new Set(discovered.map(c => c.id)));
+      setStage('courses');
+      setStatus('');
     });
-    const discovered = await window.whiteboardGui.discoverCourses();
-    setCourses(discovered);
-    setSelectedCourseIds(new Set(discovered.map(c => c.id)));
-    setStage('courses');
-    setStatus('');
   }
 
   async function runScanFiles() {
-    setStatus('Scanning selected courses for files...');
-    const result = (await window.whiteboardGui.discoverFiles(selectedCourses)) as {
-      files: DiscoveredFile[];
-      skippedOnDisk: number;
-    };
-    setFiles(result.files);
-    setSelectedFileUrls(new Set(result.files.map(f => f.url)));
-    const known = new Map<string, number>();
-    for (const f of result.files) if (typeof f.size === 'number') known.set(f.url, f.size);
-    setKnownByUrl(known);
-    const totalKnownBytes = Array.from(known.values()).reduce((a, b) => a + b, 0);
-    setDownloadState({
-      completed: 0,
-      failed: 0,
-      skipped: result.skippedOnDisk || 0,
-      downloadedBytes: 0,
-      totalKnownBytes,
-      unknownCount: result.files.length - known.size,
-      speed: 0,
-      currentFile: '',
+    await runWithUiError(async () => {
+      setStatus('Scanning selected courses for files...');
+      const result = (await window.whiteboardGui.discoverFiles(selectedCourses)) as {
+        files: DiscoveredFile[];
+        skippedOnDisk: number;
+      };
+      setFiles(result.files);
+      setSelectedFileUrls(new Set(result.files.map(f => f.url)));
+      const known = new Map<string, number>();
+      for (const f of result.files) if (typeof f.size === 'number') known.set(f.url, f.size);
+      setKnownByUrl(known);
+      const totalKnownBytes = Array.from(known.values()).reduce((a, b) => a + b, 0);
+      setDownloadState({
+        completed: 0,
+        failed: 0,
+        skipped: result.skippedOnDisk || 0,
+        downloadedBytes: 0,
+        totalKnownBytes,
+        unknownCount: result.files.length - known.size,
+        speed: 0,
+        currentFile: '',
+      });
+      setPerUrlDownloaded(new Map());
+      setStage('files');
+      setStatus('');
     });
-    setPerUrlDownloaded(new Map());
-    setStage('files');
-    setStatus('');
   }
 
   async function startDownload() {
-    setStatus('Downloading selected files...');
-    setStage('download');
-    const result = (await window.whiteboardGui.downloadFiles(selectedFiles)) as Summary;
-    setSummary(result);
-    setStatus('');
-    setStage('summary');
+    await runWithUiError(async () => {
+      setStatus('Downloading selected files...');
+      setStage('download');
+      const result = (await window.whiteboardGui.downloadFiles(selectedFiles)) as Summary;
+      setSummary(result);
+      setStatus('');
+      setStage('summary');
+    });
   }
 
   async function saveSetup(testLogin: boolean) {
-    setStatus(testLogin ? 'Saving setup and testing login...' : 'Saving setup...');
-    await window.whiteboardGui.saveSetup({ ...config, testLogin });
-    setStatus('Setup saved.');
-    setStage('welcome');
+    await runWithUiError(async () => {
+      setStatus(testLogin ? 'Saving setup and testing login...' : 'Saving setup...');
+      await window.whiteboardGui.saveSetup({ ...config, testLogin });
+      setStatus('Setup saved.');
+      setStage('welcome');
+    });
   }
 
   async function resetSetup() {
-    await window.whiteboardGui.resetSetup();
-    setStatus('Setup reset.');
+    await runWithUiError(async () => {
+      await window.whiteboardGui.resetSetup();
+      setStatus('Setup reset.');
+    });
   }
 
   async function runDoctor(loginTest = false) {
-    setStatus('Running doctor checks...');
-    const rows = (await window.whiteboardGui.runDoctor({ loginTest })) as DoctorRow[];
-    setDoctorRows(rows);
-    setStatus('');
+    await runWithUiError(async () => {
+      setStatus('Running doctor checks...');
+      const rows = (await window.whiteboardGui.runDoctor({ loginTest })) as DoctorRow[];
+      setDoctorRows(rows);
+      setStatus('');
+    });
   }
 
   const fileTypes = Array.from(new Set(files.map(f => (f.fileType || '').toLowerCase()).filter(Boolean)));
@@ -253,6 +281,7 @@ export function App() {
         <div>Version {version}</div>
       </header>
       {status && <div className="status">{status}</div>}
+      {errorMessage && <div className="status" style={{ borderLeftColor: '#d9534f' }}>{errorMessage}</div>}
 
       {stage === 'welcome' && (
         <section className="card">
