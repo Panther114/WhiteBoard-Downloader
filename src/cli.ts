@@ -36,7 +36,7 @@ const program = new Command();
 program
   .name('whiteboard-dl')
   .description('Modern automation tool to download course materials from SHSID Blackboard China')
-  .version('0.8.2');
+  .version('0.8.3');
 
 function isDebugMode(): boolean {
   return process.env.DEBUG === '1' || process.env.LOG_LEVEL === 'debug';
@@ -395,7 +395,7 @@ program
     let workflow: DownloadWorkflow | null = null;
 
     try {
-      console.log(chalk.bold.cyan('\n🎓 BlackboardChina Downloader v0.8.2\n'));
+      console.log(chalk.bold.cyan('\n🎓 BlackboardChina Downloader v0.8.3\n'));
 
       let username = options.username;
       let password = options.password;

@@ -1,4 +1,4 @@
-# BlackboardChina Downloader v0.8.2
+# BlackboardChina Downloader v0.8.3
 
 A Blackboard downloader for students that keeps the interactive checkbox selection flow and adds a one-click setup/start path.
 
