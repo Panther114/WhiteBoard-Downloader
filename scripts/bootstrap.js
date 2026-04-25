@@ -91,6 +91,14 @@ function installDependencies(mode) {
       : `Run "npm ${installArgs.join(' ')}" manually and fix any installation errors.`;
 
   run('npm', installArgs, stepName, onFailAction);
+
+  if (!dependenciesHealthy(mode)) {
+    const healthFailAction =
+      mode === 'gui'
+        ? 'Electron failed to download. This is usually a network/CDN/VPN issue. Turn on VPN or use a stable network, delete node_modules and rerun start-gui, and optionally set ELECTRON_MIRROR if your environment documents a mirror.'
+        : 'Dependencies are still incomplete after install. Delete node_modules and rerun bootstrap.';
+    fail('Dependencies are incomplete after install.', healthFailAction);
+  }
 }
 
 function isPlaywrightChromiumInstalled() {
