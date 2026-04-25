@@ -5,6 +5,38 @@ export type SupportedFileType = (typeof SUPPORTED_FILE_TYPES)[number];
 
 export const SUPPORTED_FILE_TYPE_SET = new Set<string>(SUPPORTED_FILE_TYPES);
 
+export const BLOCKED_FILE_EXTENSIONS = new Set<string>([
+  'zip',
+  'rar',
+  '7z',
+  'gz',
+  'png',
+  'jpg',
+  'jpeg',
+  'gif',
+  'bmp',
+  'svg',
+  'webp',
+  'heic',
+  'mp4',
+  'mp3',
+  'mov',
+  'avi',
+  'mkv',
+  'wmv',
+  'webm',
+  'flv',
+  'wav',
+  'aac',
+  'ogg',
+  'm4a',
+  'm4v',
+  'txt',
+  'csv',
+  'json',
+  'xml',
+]);
+
 export const MIME_TO_EXTENSION: Record<string, SupportedFileType> = {
   'application/pdf': 'pdf',
   'application/msword': 'doc',
@@ -48,6 +80,7 @@ export function normalizeSupportedFilename(
 } {
   const safeName = filename?.trim() || 'file';
   const currentExt = getExtensionFromName(safeName);
+  const extFromMime = getSupportedExtensionFromMime(mimeType);
 
   if (currentExt) {
     if (SUPPORTED_FILE_TYPE_SET.has(currentExt)) {
@@ -58,14 +91,32 @@ export function normalizeSupportedFilename(
       };
     }
 
+    if (BLOCKED_FILE_EXTENSIONS.has(currentExt)) {
+      return {
+        accepted: false,
+        normalizedName: safeName,
+        reason: 'unsupported_extension',
+      };
+    }
+
+    if (extFromMime) {
+      const extWithDot = path.extname(safeName);
+      const baseName = path.basename(safeName, extWithDot);
+      const normalizedBase = baseName || 'file';
+      return {
+        accepted: true,
+        normalizedName: `${normalizedBase}.${extFromMime}`,
+        extension: extFromMime,
+      };
+    }
+
     return {
       accepted: false,
       normalizedName: safeName,
-      reason: 'unsupported_extension',
+      reason: 'unknown_type',
     };
   }
 
-  const extFromMime = getSupportedExtensionFromMime(mimeType);
   if (!extFromMime) {
     return {
       accepted: false,

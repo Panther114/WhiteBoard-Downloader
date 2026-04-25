@@ -4,6 +4,8 @@ A Blackboard downloader for students that keeps the interactive checkbox selecti
 
 ## Normal user path (GitHub Releases ZIP)
 
+Requires Node.js **20.x or 22.x LTS** installed manually (`24.x` is not supported).
+
 1. Download the ZIP from **GitHub Releases**.
 2. Unzip it.
 3. Double-click one launcher in the project folder:
@@ -17,6 +19,7 @@ A Blackboard downloader for students that keeps the interactive checkbox selecti
    - installs Playwright Chromium,
    - runs setup if config is missing/invalid,
    - launches download.
+   - (first run may take longer while dependencies/build/Playwright install complete)
 5. Enter Blackboard credentials once in setup.
 6. Select courses/files in the existing interactive checkbox prompts.
 7. On future runs, click the same launcher again.
@@ -52,7 +55,14 @@ Only these file types are accepted:
 Extension normalization behavior:
 - Keeps valid supported extension if already present.
 - Appends extension from MIME when name has no supported extension (example: `download` + `application/pdf` -> `download.pdf`).
-- Rejects unsupported extensions.
+- Rejects blocked extensions (archive/image/media/text/data) even when MIME claims a supported document.
+- Replaces Blackboard-ish unknown extensions with MIME-derived supported extensions when MIME is supported (example: `download.aspx` + PDF MIME -> `download.pdf`).
+
+## Progress display
+
+- Download progress percentage is byte-based when file sizes are known.
+- File count remains visible as secondary progress.
+- If no known sizes are available, progress falls back to clearly labeled file-count mode.
 
 ## Reports and logs
 

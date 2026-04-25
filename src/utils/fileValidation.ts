@@ -1,5 +1,6 @@
 import path from 'path';
 import {
+  BLOCKED_FILE_EXTENSIONS,
   MIME_TO_EXTENSION,
   SUPPORTED_FILE_TYPE_SET,
   getSupportedExtensionFromMime,
@@ -13,38 +14,7 @@ const ALLOWED_EXT_TOKEN_RE = new RegExp(`\\.(${ALLOWED_EXT_PATTERN})\\b`, 'i');
 
 export const ALLOWED_MIME_TYPES = new Set(Object.keys(MIME_TO_EXTENSION));
 
-const BLOCKED_EXTENSIONS = new Set([
-  'zip',
-  'rar',
-  '7z',
-  'gz',
-  'png',
-  'jpg',
-  'jpeg',
-  'gif',
-  'bmp',
-  'svg',
-  'webp',
-  'heic',
-  'mp4',
-  'mp3',
-  'mov',
-  'avi',
-  'mkv',
-  'wmv',
-  'webm',
-  'flv',
-  'wav',
-  'aac',
-  'ogg',
-  'm4a',
-  'm4v',
-  'txt',
-  'csv',
-  'json',
-  'xml',
-]);
-const BLOCKED_EXT_PATTERN = Array.from(BLOCKED_EXTENSIONS).join('|');
+const BLOCKED_EXT_PATTERN = Array.from(BLOCKED_FILE_EXTENSIONS).join('|');
 const BLOCKED_EXT_RE = new RegExp(`\\.(${BLOCKED_EXT_PATTERN})\\b`, 'i');
 
 const BLOCKED_MIME_TYPES = new Set([
@@ -126,10 +96,10 @@ export function hasBlockedExtension(nameOrUrl?: string): boolean {
   if (!nameOrUrl) return false;
 
   const ext = getExtensionFromUrlPath(nameOrUrl) ?? getExtensionFromPathLike(nameOrUrl);
-  if (ext && BLOCKED_EXTENSIONS.has(ext)) return true;
+  if (ext && BLOCKED_FILE_EXTENSIONS.has(ext)) return true;
 
   const fromName = safelyDecode(nameOrUrl).match(BLOCKED_EXT_RE)?.[1]?.toLowerCase();
-  return Boolean(fromName && BLOCKED_EXTENSIONS.has(fromName));
+  return Boolean(fromName && BLOCKED_FILE_EXTENSIONS.has(fromName));
 }
 
 export function isAllowedDocumentCandidate(input: {
