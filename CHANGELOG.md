@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.2] - 2026-04-25
+
+### Added
+- Added desktop GUI workflow (Electron + React) covering setup, diagnostics, course selection, file selection, download progress, and summary.
+- Added GUI launchers: `start-gui.bat`, `start-gui.ps1`, `start-gui.sh`.
+- Added shared workflow controller/events layer reused by CLI/TUI and GUI.
+
+### Changed
+- Normal interactive mode now discovers and displays all courses before user selection.
+- Course filtering is no longer silently applied to normal interactive course selection.
+- Version corrected to `0.8.2` in package metadata, CLI, and user-facing docs.
+
+### Preserved
+- Existing TUI workflow remains available.
+- Strict document allowlist behavior remains unchanged.
+
 ## [2.3.0] - 2026-04-17
 
 ### Added

@@ -39,7 +39,7 @@ const eta = (seconds: number): string => {
 
 export function App() {
   const [stage, setStage] = useState<Stage>('welcome');
-  const [version, setVersion] = useState('0.8.2');
+  const [version, setVersion] = useState('');
   const [status, setStatus] = useState('');
   const [config, setConfig] = useState({
     username: '',
@@ -495,4 +495,3 @@ export function App() {
     </div>
   );
 }
-

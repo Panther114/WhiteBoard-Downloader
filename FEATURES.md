@@ -6,11 +6,14 @@
 - ✅ Setup wizard for credentials and preferences
 - ✅ Doctor command for diagnostics (`doctor`, `doctor --login`)
 - ✅ Cross-platform launchers (`start.bat`, `start.ps1`, `start.sh`)
+- ✅ Desktop GUI flow (Electron + React) with setup, doctor, course/file selection, progress, summary
+- ✅ Separate GUI launchers (`start-gui.bat`, `start-gui.ps1`, `start-gui.sh`)
 
 ## Interactive usage
 
 - ✅ Interactive course selection (checkbox UI)
 - ✅ Interactive file selection (checkbox UI)
+- ✅ Full discovered-course list shown before selection (no silent hiding in normal interactive mode)
 
 ## Download and validation behavior
 

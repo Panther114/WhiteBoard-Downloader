@@ -1,7 +1,7 @@
 # Self-Check Validation Report
 
 ## Date: 2026-04-06
-## Version: 2.0.0
+## Version: 0.8.2
 
 ---
 
@@ -106,9 +106,9 @@
 
 ---
 
-## 📋 Feature Comparison: v0.3.6 vs v2.0
+## 📋 Feature Comparison: v0.3.6 vs v0.8.2
 
-| Feature | v0.3.6 (Legacy) | v2.0 (New) | Status |
+| Feature | v0.3.6 (Legacy) | v0.8.2 (Current) | Status |
 |---------|-----------------|------------|--------|
 | Language | Python | TypeScript | ✅ Complete |
 | Browser Automation | Selenium | Playwright | ✅ Complete |

@@ -9,6 +9,7 @@ You now use one launcher file for both first-time setup and later runs.
    - `start.bat` (Windows)
    - `start.ps1` (Windows PowerShell)
    - `start.sh` (macOS/Linux)
+   - Optional GUI: `start-gui.bat` / `start-gui.ps1` / `start-gui.sh`
 3. The launcher automatically performs bootstrap, setup (if needed), and download start.
 
 ## What the launcher does

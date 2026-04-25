@@ -1,4 +1,4 @@
-# WhiteBoard Downloader
+# WhiteBoard Downloader v0.8.2
 
 A Blackboard downloader for students that keeps the interactive checkbox selection flow and adds a one-click setup/start path.
 
@@ -12,6 +12,7 @@ Requires Node.js **20.x or 22.x LTS** installed manually (`24.x` is not supporte
    - `start.bat` (Windows)
    - `start.ps1` (Windows PowerShell)
    - `start.sh` (macOS/Linux)
+   - Optional GUI launchers: `start-gui.bat` / `start-gui.ps1` / `start-gui.sh`
 4. The launcher now automatically:
    - checks Node/npm compatibility,
    - installs dependencies,
@@ -22,6 +23,7 @@ Requires Node.js **20.x or 22.x LTS** installed manually (`24.x` is not supporte
    - (first run may take longer while dependencies/build/Playwright install complete)
 5. Enter Blackboard credentials once in setup.
 6. Select courses/files in the existing interactive checkbox prompts.
+   - In GUI mode, use full course/file selection screens.
 7. On future runs, click the same launcher again.
 
 See [README-USER.md](README-USER.md) for short student instructions.
@@ -46,6 +48,9 @@ npm start download
 - `node dist/cli.js doctor` – environment and config checks
 - `node dist/cli.js doctor --login` – includes a real login test
 - `node dist/cli.js config` – print current effective config
+- `npm run gui` – launch desktop GUI
+- `npm run gui:dev` – GUI development mode
+- `npm run build:gui` – build CLI + GUI bundles
 
 ## Strict document allowlist
 
