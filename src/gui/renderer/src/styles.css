@@ -223,7 +223,7 @@ label {
   border-radius: 50%;
   border: 2px solid rgba(60, 120, 220, 0.25);
   border-top-color: #2d6cdf;
-  animation: spin 720ms linear infinite;
+  animation: spin 600ms linear infinite;
 }
 
 @keyframes spin {
