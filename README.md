@@ -46,6 +46,7 @@ npm start download
 - `npm run setup` or `node dist/cli.js setup` – setup wizard
 - `node dist/cli.js setup --reset` – recreate config from scratch
 - `node dist/cli.js setup --test-login` – save config then test Blackboard login (blank password keeps existing saved password)
+- `node dist/cli.js config-check` – launcher-focused setup validity check
 - `node dist/cli.js download` – interactive download flow
 - `node dist/cli.js doctor` – environment and config checks
 - `node dist/cli.js doctor --login` – includes a real login test

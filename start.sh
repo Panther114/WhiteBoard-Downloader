@@ -33,7 +33,7 @@ if ! npm run bootstrap; then
 fi
 
 echo "[INFO] Checking configuration..."
-if ! node dist/cli.js doctor --config-only >/dev/null 2>&1; then
+if ! node dist/cli.js config-check --quiet >/dev/null 2>&1; then
   echo "[INFO] Setup is missing or invalid. Launching setup wizard..."
   if ! node dist/cli.js setup; then
     echo ""

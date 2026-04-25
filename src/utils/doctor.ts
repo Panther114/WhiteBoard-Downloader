@@ -66,6 +66,24 @@ export function evaluateConfigEnv(envPath: string): {
   };
 }
 
+export interface ConfigReadyForLaunchResult {
+  ok: boolean;
+  reason?: string;
+}
+
+export function isConfigReadyForLaunch(envPath: string): ConfigReadyForLaunchResult {
+  const { exists, validCredentials, env } = evaluateConfigEnv(envPath);
+  if (!exists) {
+    return { ok: false, reason: '.env missing' };
+  }
+
+  if (!validCredentials) {
+    return { ok: false, reason: 'Blackboard credentials missing or placeholder values' };
+  }
+
+  return { ok: true };
+}
+
 export function getDoctorPaths(config: Config): { downloadDir: string; logDir: string; dbDir: string } {
   return {
     downloadDir: path.resolve(config.downloadDir),

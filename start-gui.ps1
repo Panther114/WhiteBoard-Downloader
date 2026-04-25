@@ -34,7 +34,7 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 Write-Host "[INFO] Checking configuration..."
-node dist\cli.js doctor --config-only *> $null
+node dist\cli.js config-check --quiet *> $null
 if ($LASTEXITCODE -ne 0) {
     Write-Host "[INFO] Setup is missing or invalid. Launching setup wizard..." -ForegroundColor Yellow
     node dist\cli.js setup
