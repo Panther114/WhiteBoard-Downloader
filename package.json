@@ -1,6 +1,6 @@
 {
   "name": "whiteboard-downloader",
-  "version": "2.0.0",
+  "version": "0.8.2",
   "description": "Modern, async-first automation tool to download course materials from SHSID Blackboard China",
   "main": "dist/index.js",
   "bin": {
@@ -9,7 +9,10 @@
   "scripts": {
     "bootstrap": "node scripts/bootstrap.js",
     "build": "tsc",
+    "build:gui": "npm run build && vite build --config vite.gui.config.ts",
     "dev": "ts-node src/cli.ts",
+    "gui": "npm run build:gui && electron dist/gui/main.js",
+    "gui:dev": "npm run build && concurrently -k \"vite --config vite.gui.config.ts\" \"wait-on tcp:5173 && electron dist/gui/main.js --dev\"",
     "start": "node dist/cli.js",
     "setup": "node dist/cli.js setup",
     "test": "jest",
@@ -40,6 +43,8 @@
     "p-limit": "^3.1.0",
     "p-retry": "^4.6.2",
     "playwright": "^1.40.0",
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5",
     "sanitize-filename": "^1.6.3",
     "winston": "^3.11.0",
     "zod": "^3.22.4"
@@ -58,10 +63,17 @@
     "prettier": "^3.1.0",
     "ts-jest": "^29.1.1",
     "ts-node": "^10.9.2",
-    "typescript": "^5.3.0"
+    "typescript": "^5.3.0",
+    "vite": "^8.0.10",
+    "wait-on": "^9.0.5"
   },
   "engines": {
     "node": ">=18.0.0 <24.0.0",
     "npm": ">=8.0.0"
   }
 }
+    "concurrently": "^9.2.1",
+    "electron": "^41.3.0",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.1",

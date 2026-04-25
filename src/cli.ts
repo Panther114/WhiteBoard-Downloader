@@ -8,11 +8,9 @@ import fs from 'fs';
 import path from 'path';
 import { spawnSync } from 'child_process';
 import cliProgress from 'cli-progress';
-import { WhiteboardDownloader } from './index';
 import { getConfig } from './config';
 import { Config, Course, DiscoveredFile } from './types';
-import { formatBytes, sanitizeFilename } from './utils/helpers';
-import { isFileInTree } from './fileTree';
+import { formatBytes } from './utils/helpers';
 import { BlackboardAuth } from './auth';
 import { readEnvFile, writeEnvFile, hasValidCredentials } from './utils/envFile';
 import {
@@ -26,6 +24,7 @@ import {
   type DoctorCheck,
 } from './utils/doctor';
 import { formatUserError, mapToUserError } from './utils/userErrors';
+import { DownloadWorkflow } from './workflow/downloadWorkflow';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const InquirerSeparator: new (line?: string) => unknown = (inquirer as any).Separator;
@@ -35,7 +34,7 @@ const program = new Command();
 program
   .name('whiteboard-dl')
   .description('Modern automation tool to download course materials from SHSID Blackboard China')
-  .version('2.0.0');
+  .version('0.8.2');
 
 function isDebugMode(): boolean {
   return process.env.DEBUG === '1' || process.env.LOG_LEVEL === 'debug';
@@ -66,10 +65,6 @@ function formatEta(seconds: number): string {
   const hours = Math.floor(rounded / 3600);
   const remainingMinutes = Math.floor((rounded % 3600) / 60);
   return `${hours}h ${String(remainingMinutes).padStart(2, '0')}m`;
-}
-
-function escapeRegexLiteral(input: string): string {
-  return input.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 function writeRunSummary(report: {
@@ -156,7 +151,6 @@ program
       const existing = options.reset ? {} : readEnvFile(envPath);
       const hasExistingPassword = Boolean(existing.BB_PASSWORD && existing.BB_PASSWORD !== 'your_password');
 
-      const courseFilterDefaultMode = existing.COURSE_FILTER ? 'regex' : 'all';
       const defaultIncludeNonSubject = existing.INCLUDE_NON_SUBJECT_COURSES === 'true';
       const defaultHeadless = existing.HEADLESS !== 'false';
 
@@ -188,43 +182,9 @@ program
           validate: (v: string) => v.trim().length > 0 || 'Download directory is required',
         },
         {
-          type: 'list',
-          name: 'courseFilterMode',
-          message: 'Course filtering mode:',
-          default: courseFilterDefaultMode,
-          choices: [
-            { name: '1) Download all normal subject courses', value: 'all' },
-            { name: '2) Only courses containing a phrase', value: 'phrase' },
-            { name: '3) Advanced regex course filter', value: 'regex' },
-          ],
-        },
-        {
-          type: 'input',
-          name: 'coursePhrase',
-          message: 'Enter phrase to match in course names:',
-          when: (a: any) => a.courseFilterMode === 'phrase',
-          validate: (v: string) => v.trim().length > 0 || 'Phrase is required',
-        },
-        {
-          type: 'input',
-          name: 'courseRegex',
-          message: 'Enter regex pattern for course names:',
-          default: existing.COURSE_FILTER || '',
-          when: (a: any) => a.courseFilterMode === 'regex',
-          validate: (v: string) => {
-            if (!v.trim()) return 'Regex is required';
-            try {
-              new RegExp(v);
-              return true;
-            } catch {
-              return 'Invalid regex pattern';
-            }
-          },
-        },
-        {
           type: 'confirm',
           name: 'includeNonSubjectCourses',
-          message: 'Include non-subject / organization courses?',
+          message: 'Include non-subject / organization courses for advanced CLI filtering?',
           default: defaultIncludeNonSubject,
         },
         {
@@ -242,18 +202,11 @@ program
         },
       ]);
 
-      let courseFilter = '';
-      if (answers.courseFilterMode === 'phrase') {
-        courseFilter = escapeRegexLiteral((answers.coursePhrase || '').trim());
-      } else if (answers.courseFilterMode === 'regex') {
-        courseFilter = (answers.courseRegex || '').trim();
-      }
-
       const values: Record<string, string> = {
         BB_USERNAME: answers.username.trim(),
         BB_PASSWORD: answers.password,
         DOWNLOAD_DIR: answers.downloadDir.trim(),
-        COURSE_FILTER: courseFilter,
+        COURSE_FILTER: existing.COURSE_FILTER || '',
         INCLUDE_NON_SUBJECT_COURSES: String(Boolean(answers.includeNonSubjectCourses)),
         HEADLESS: String(Boolean(answers.headless)),
       };
@@ -474,10 +427,10 @@ program
       runError: undefined as string | undefined,
     };
 
-    let wbDownloader: WhiteboardDownloader | null = null;
+    let workflow: DownloadWorkflow | null = null;
 
     try {
-      console.log(chalk.bold.cyan('\n🎓 Whiteboard Downloader v2.0\n'));
+      console.log(chalk.bold.cyan('\n🎓 Whiteboard Downloader v0.8.2\n'));
 
       let username = options.username;
       let password = options.password;
@@ -527,8 +480,8 @@ program
         password,
         downloadDir: options.dir,
         headless: options.headless === 'true',
-        courseFilter: options.filter,
-        includeNonSubjectCourses: Boolean(options.includeNonSubjectCourses),
+        courseFilter: undefined,
+        includeNonSubjectCourses: true,
       });
 
       report.logFilePath = config.logFile;
@@ -536,14 +489,13 @@ program
 
       console.log(chalk.gray(`\nDownload directory: ${config.downloadDir}`));
       console.log(chalk.gray(`Browser mode: ${config.headless ? 'headless' : 'visible'}`));
-      if (config.courseFilter) {
-        console.log(chalk.gray(`Course filter: ${config.courseFilter}`));
+      if (options.filter) {
+        console.log(chalk.gray(`Advanced course filter (explicit CLI): ${options.filter}`));
       }
-      console.log(chalk.gray(`Include non-subject courses: ${config.includeNonSubjectCourses ? 'yes' : 'no'}`));
       console.log();
 
       const spinner = ora('Initializing...').start();
-      wbDownloader = new WhiteboardDownloader(config);
+      workflow = new DownloadWorkflow(config);
 
       let singleBar: cliProgress.SingleBar | null = null;
       let completedFiles = 0;
@@ -553,11 +505,11 @@ program
 
       try {
         spinner.text = 'Launching browser and logging in...';
-        await wbDownloader.initialize();
+        await workflow.initialize();
         spinner.succeed('Logged in successfully');
 
         spinner.start('Fetching course list...');
-        const allCourses = await wbDownloader.getCourses();
+        const allCourses = await workflow.discoverCourses({ filterPattern: options.filter });
         spinner.stop();
 
         report.coursesDiscovered = allCourses.length;
@@ -587,25 +539,24 @@ program
         report.coursesSelected = selectedCourses.length;
 
         spinner.start('Scanning selected course materials...');
-        const discoveredFiles = await wbDownloader.discoverAllFiles(selectedCourses);
+        const discoveredResult = await workflow.discoverFiles(selectedCourses);
         spinner.stop();
 
-        report.filesDiscovered = discoveredFiles.length;
+        report.filesDiscovered = discoveredResult.discovered.length;
 
-        if (discoveredFiles.length === 0) {
+        if (discoveredResult.discovered.length === 0) {
           console.log(chalk.yellow('\nNo downloadable files found.\n'));
           return;
         }
 
-        spinner.start(`Fetching metadata for ${discoveredFiles.length} files...`);
-        const enrichedFiles = await wbDownloader.fetchFileMetadata(discoveredFiles);
+        const enrichedFiles = discoveredResult.enriched;
         const withSize = enrichedFiles.filter(f => f.size !== undefined).length;
-        spinner.succeed(`Metadata fetched (${withSize} of ${enrichedFiles.length} files have known size)`);
+        spinner.succeed(
+          `Metadata fetched (${withSize} of ${enrichedFiles.length} files have known size)`,
+        );
 
-        const fileTree = wbDownloader.getFileTree();
-        const filtered = filterAlreadyDownloaded(enrichedFiles, fileTree);
-        const undownloadedFiles = filtered.files;
-        skippedOnDisk = filtered.skippedOnDisk;
+        const undownloadedFiles = discoveredResult.files;
+        skippedOnDisk = discoveredResult.skippedOnDisk;
         if (skippedOnDisk > 0) {
           console.log(chalk.gray(`   ↳ Skipped ${skippedOnDisk} file(s) already present in downloads folder`));
         }
@@ -694,11 +645,11 @@ program
               : '?',
         });
 
-        wbDownloader.on('download:start', (file: { url: string; name: string }) => {
+        workflow.on('download:start', (file: { url: string; name: string }) => {
           fileDownloaded.set(file.url, 0);
         });
 
-        wbDownloader.on(
+        workflow.on(
           'download:progress',
           (data: { url: string; filename: string; downloaded: number; total: number }) => {
             const prev = fileDownloaded.get(data.url) ?? 0;
@@ -720,7 +671,7 @@ program
           },
         );
 
-        wbDownloader.on('download:complete', (data: { url: string; filename: string; size: number }) => {
+        workflow.on('download:complete', (data: { url: string; filename: string; size: number }) => {
           completedFiles++;
           const prev = fileDownloaded.get(data.url) ?? 0;
           const current = Math.max(prev, data.size);
@@ -740,7 +691,7 @@ program
           bar.update(barValue, barPayload());
         });
 
-        wbDownloader.on('download:error', (data: { url: string; filename: string; error: string }) => {
+        workflow.on('download:error', (data: { url: string; filename: string; error: string }) => {
           failedFiles++;
           report.failedFiles.push({ name: data.filename, reason: data.error || 'Unknown error' });
           refreshSpeed();
@@ -748,7 +699,7 @@ program
           bar.update(barValue, barPayload());
         });
 
-        wbDownloader.on('download:skip', (data: { url: string; filename: string }) => {
+        workflow.on('download:skip', (data: { url: string; filename: string }) => {
           skippedFiles++;
           const knownSize = knownFileSizes.get(data.url);
           if (knownSize !== undefined) {
@@ -782,7 +733,7 @@ program
           return a.size - b.size;
         });
 
-        await wbDownloader.downloadSelected(filesToDownload);
+        await workflow.downloadSelected(filesToDownload);
 
         singleBar.stop();
 
@@ -813,8 +764,8 @@ program
       process.exitCode = 1;
       return;
     } finally {
-      if (wbDownloader) {
-        await wbDownloader.cleanup();
+      if (workflow) {
+        await workflow.cleanup();
       }
       report.endedAt = new Date().toISOString();
       try {
@@ -864,36 +815,8 @@ program
     }
   });
 
-function filterAlreadyDownloaded(
-  files: DiscoveredFile[],
-  fileTree: import('./types').FileTree,
-): { files: DiscoveredFile[]; skippedOnDisk: number } {
-  const result: DiscoveredFile[] = [];
-  let skippedOnDisk = 0;
-
-  for (const file of files) {
-    const sanitized = sanitizeFilename(file.name);
-
-    const inTree =
-      isFileInTree(fileTree, file.courseName, file.sectionName, file.savePath, file.name) ||
-      isFileInTree(fileTree, file.courseName, file.sectionName, file.savePath, sanitized);
-
-    const existsByOriginal = !inTree && fs.existsSync(path.join(file.savePath, file.name));
-    const existsBySanitized =
-      !inTree && sanitized !== file.name && fs.existsSync(path.join(file.savePath, sanitized));
-
-    if (inTree || existsByOriginal || existsBySanitized) {
-      skippedOnDisk++;
-    } else {
-      result.push(file);
-    }
-  }
-
-  return { files: result, skippedOnDisk };
-}
-
 async function selectCoursesInteractively(courses: Course[]): Promise<Course[]> {
-  console.log(chalk.bold.cyan(`📚 Found ${courses.length} course(s) on your account`));
+  console.log(chalk.bold.cyan(`Found ${courses.length} courses. Select the courses you want to scan.`));
   console.log(
     chalk.gray('   Use ↑↓ to navigate, Space to toggle, a to select/deselect all, Enter to confirm\n'),
   );
