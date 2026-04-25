@@ -13,6 +13,7 @@ import {
   type DoctorCheck,
   isSupportedNodeVersion,
 } from '../utils/doctor';
+import { RunSummaryReport, writeRunSummary } from '../utils/runSummary';
 import { DownloadWorkflow } from '../workflow/downloadWorkflow';
 import { Course, DiscoveredFile } from '../types';
 
@@ -30,6 +31,11 @@ let runState = {
   filesFailed: 0,
   skippedOnDisk: 0,
   failedFiles: [] as Array<{ name: string; reason: string }>,
+};
+let runSummaryContext = {
+  startedAt: new Date().toISOString(),
+  logFilePath: './logs/whiteboard.log',
+  downloadDir: './downloads',
 };
 
 function isDevGui(): boolean {
@@ -54,6 +60,35 @@ function resetRunState(): void {
     skippedOnDisk: 0,
     failedFiles: [],
   };
+}
+
+function buildRunSummaryReport(runError?: string): RunSummaryReport {
+  return {
+    startedAt: runSummaryContext.startedAt,
+    endedAt: new Date().toISOString(),
+    coursesDiscovered: runState.coursesDiscovered,
+    coursesSelected: runState.coursesSelected,
+    filesDiscovered: runState.filesDiscovered,
+    filesSelected: runState.filesSelected,
+    filesDownloaded: runState.filesDownloaded,
+    filesSkipped: runState.filesSkipped + runState.skippedOnDisk,
+    filesFailed: runState.filesFailed,
+    failedFiles: runState.failedFiles,
+    logFilePath: runSummaryContext.logFilePath,
+    downloadDir: runSummaryContext.downloadDir,
+    runError,
+  };
+}
+
+function writeGuiRunSummarySafely(report: RunSummaryReport): void {
+  try {
+    writeRunSummary(report);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    sendWorkflowEvent('summary:warning', {
+      message: `Run summary could not be written: ${message}`,
+    });
+  }
 }
 
 function createWindow(): void {
@@ -252,6 +287,11 @@ app.whenReady().then(() => {
       courseFilter: undefined,
       includeNonSubjectCourses: true,
     });
+    runSummaryContext = {
+      startedAt: new Date().toISOString(),
+      logFilePath: config.logFile,
+      downloadDir: config.downloadDir,
+    };
 
     workflow = new DownloadWorkflow(config);
     const eventNames = [
@@ -310,7 +350,13 @@ app.whenReady().then(() => {
   ipcMain.handle('workflow:download', async (_event, payload: { files: DiscoveredFile[] }) => {
     if (!workflow) throw new Error('Workflow not started');
     runState.filesSelected = payload.files.length;
-    await workflow.downloadSelected(payload.files);
+    try {
+      await workflow.downloadSelected(payload.files);
+    } catch (error) {
+      const runError = error instanceof Error ? error.message : String(error);
+      writeGuiRunSummarySafely(buildRunSummaryReport(runError));
+      throw error;
+    }
 
     const summary = {
       coursesDiscovered: runState.coursesDiscovered,
@@ -322,6 +368,7 @@ app.whenReady().then(() => {
       filesFailed: runState.filesFailed,
       failedFiles: runState.failedFiles,
     };
+    writeGuiRunSummarySafely(buildRunSummaryReport());
     workflow.emitSummary(summary);
     return summary;
   });
