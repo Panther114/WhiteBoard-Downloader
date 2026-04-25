@@ -24,8 +24,8 @@ if ! command -v npm >/dev/null 2>&1; then
   exit 1
 fi
 
-echo "[INFO] Running bootstrap..."
-if ! npm run bootstrap; then
+echo "[INFO] Running GUI bootstrap..."
+if ! npm run bootstrap:gui; then
   echo ""
   echo "[ERROR] Bootstrap failed. Please follow the on-screen next step."
   read -p "Press Enter to exit..."
@@ -50,4 +50,3 @@ if ! npm run gui; then
   read -p "Press Enter to exit..."
   exit 1
 fi
-

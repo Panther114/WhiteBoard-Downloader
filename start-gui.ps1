@@ -24,8 +24,8 @@ try {
     exit 1
 }
 
-Write-Host "[INFO] Running bootstrap..."
-npm run bootstrap
+Write-Host "[INFO] Running GUI bootstrap..."
+npm run bootstrap:gui
 if ($LASTEXITCODE -ne 0) {
     Write-Host ""
     Write-Host "[ERROR] Bootstrap failed. Please follow the on-screen next step." -ForegroundColor Red
@@ -54,4 +54,3 @@ if ($LASTEXITCODE -ne 0) {
     Read-Host "Press Enter to exit"
     exit 1
 }
-

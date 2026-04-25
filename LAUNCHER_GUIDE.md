@@ -8,6 +8,9 @@ Use one launcher as your normal entrypoint:
 - `start-gui.bat` / `start-gui.ps1` / `start-gui.sh` (desktop GUI)
 
 Each launcher now automatically runs bootstrap + setup checks before starting download.
+- TUI launchers run `npm run bootstrap` (lighter, no GUI/Electron install).
+- GUI launchers run `npm run bootstrap:gui` (full GUI/Electron install + GUI build).
+- If install fails midway, rerun the launcher; bootstrap repairs incomplete installs.
 
 ## Desktop shortcut tips
 

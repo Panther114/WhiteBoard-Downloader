@@ -15,12 +15,13 @@ Requires Node.js **20.x or 22.x LTS** installed manually (`24.x` is not supporte
    - Optional GUI launchers: `start-gui.bat` / `start-gui.ps1` / `start-gui.sh`
 4. The launcher now automatically:
    - checks Node/npm compatibility,
-   - installs dependencies,
+   - installs dependencies (TUI launchers use lightweight bootstrap without GUI/Electron packages),
    - builds if needed,
    - installs Playwright Chromium,
    - runs setup if config is missing/invalid,
    - launches download.
    - (first run may take longer while dependencies/build/Playwright install complete)
+   - if install is interrupted, rerunning launcher now repairs incomplete `node_modules`
 5. Enter Blackboard credentials once in setup.
 6. Select courses/files in the existing interactive checkbox prompts.
    - In GUI mode, use full course/file selection screens.
@@ -40,7 +41,8 @@ npm start download
 
 ## Commands
 
-- `npm run bootstrap` – local bootstrap/install/build/browser setup helper
+- `npm run bootstrap` – TUI bootstrap (installs required non-GUI dependencies, builds CLI, installs Playwright Chromium)
+- `npm run bootstrap:gui` – GUI bootstrap (installs full GUI stack including Electron, builds CLI+GUI, installs Playwright Chromium)
 - `npm run setup` or `node dist/cli.js setup` – setup wizard
 - `node dist/cli.js setup --reset` – recreate config from scratch
 - `node dist/cli.js setup --test-login` – save config then test Blackboard login (blank password keeps existing saved password)
@@ -48,7 +50,7 @@ npm start download
 - `node dist/cli.js doctor` – environment and config checks
 - `node dist/cli.js doctor --login` – includes a real login test
 - `node dist/cli.js config` – print current effective config
-- `npm run gui` – launch desktop GUI
+- `npm run gui` – launch desktop GUI (no rebuild)
 - `npm run gui:dev` – GUI development mode
 - `npm run build:gui` – build CLI + GUI bundles
 
