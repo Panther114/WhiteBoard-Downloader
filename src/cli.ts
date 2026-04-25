@@ -248,7 +248,8 @@ program
         preserveEmptyPassword: true,
       });
 
-      Object.assign(process.env, values);
+      const effectiveEnv = readEnvFile(envPath);
+      Object.assign(process.env, effectiveEnv);
 
       console.log(chalk.green(`\n✓ Configuration saved to ${envPath}`));
 

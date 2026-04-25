@@ -25,3 +25,5 @@
 
 - ✅ Resilient course discovery with fallback selectors
 - ✅ Friendly user-facing error mapping with next actions
+- ✅ Launchers always run from their own folder for reliable ZIP double-click usage
+- ✅ Setup login test respects preserved saved password when password input is left blank
