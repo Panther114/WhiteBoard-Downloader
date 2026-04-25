@@ -65,6 +65,7 @@ export interface Config {
   logLevel: 'debug' | 'info' | 'warn' | 'error';
   logFile: string;
   courseFilter?: string;
+  includeNonSubjectCourses: boolean;
   maxRetries: number;
   retryDelay: number;
   /** Path to the JSON file-tree cache. Defaults to <downloadDir>/file_tree.json. */

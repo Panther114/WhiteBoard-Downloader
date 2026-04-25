@@ -19,6 +19,12 @@ import {
   parseContentDisposition,
   formatBytes,
 } from '../utils/helpers';
+import {
+  getAllowedExtFromName,
+  hasBlockedExtension,
+  isAllowedDocumentCandidate,
+  isBlockedMimeType,
+} from '../utils/fileValidation';
 import { DownloadDatabase } from '../database';
 import { addFileToTree, saveFileTree } from '../fileTree';
 
@@ -33,6 +39,27 @@ const GENERIC_BINARY_EXTENSION = 'bin';
 
 /** MIME type prefixes that indicate audio/video content (blocked). */
 const BLOCKED_MEDIA_MIME_PREFIXES = ['video/', 'audio/'];
+
+/**
+ * Normalize Axios header values to a plain string.
+ * Axios header entries can be string/number/boolean/array/object/null, but the
+ * downloader metadata checks expect a simple string when possible.
+ */
+function getHeaderString(
+  value:
+    | string
+    | number
+    | boolean
+    | string[]
+    | import('axios').AxiosHeaders
+    | null
+    | undefined,
+): string | undefined {
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number') return String(value);
+  if (Array.isArray(value)) return value.join('; ');
+  return undefined;
+}
 
 export class FileDownloader extends EventEmitter {
   private axios: AxiosInstance;
@@ -87,19 +114,23 @@ export class FileDownloader extends EventEmitter {
         headLimit(async (): Promise<DiscoveredFile | null> => {
           try {
             const response = await this.axios.head(file.url, { timeout: HEAD_REQUEST_TIMEOUT_MS });
-            const rawLength = response.headers['content-length'];
+            const rawLength = getHeaderString(response.headers['content-length']);
             const size = rawLength ? parseInt(rawLength, 10) : undefined;
-            const rawType = response.headers['content-type'] || '';
-            const mimeType = rawType.split(';')[0].trim() || undefined;
+            const rawType = getHeaderString(response.headers['content-type']) ?? '';
+            const mimeType = rawType.split(';')[0].trim().toLowerCase() || undefined;
 
             // Block media files by MIME type
             if (mimeType && BLOCKED_MEDIA_MIME_PREFIXES.some(p => mimeType.startsWith(p))) {
               log.debug(`Filtering media file (MIME: ${mimeType}): ${file.name} -> ${file.url}`);
               return null;
             }
+            if (isBlockedMimeType(mimeType)) {
+              log.debug(`Rejected metadata candidate (blocked MIME ${mimeType}): ${file.name} -> ${file.url}`);
+              return null;
+            }
 
             const extFromMime = mimeType ? mime.extension(mimeType) : false;
-            const extFromName = path.extname(file.name).slice(1);
+            const extFromName = getAllowedExtFromName(file.name) ?? path.extname(file.name).slice(1);
             const fileType = (
               (extFromMime && extFromMime !== GENERIC_BINARY_EXTENSION ? extFromMime : extFromName) || undefined
             )?.toUpperCase();
@@ -115,6 +146,28 @@ export class FileDownloader extends EventEmitter {
             // If the resolved name still has no extension, append from MIME
             if (!path.extname(resolvedName) && extFromMime && extFromMime !== GENERIC_BINARY_EXTENSION) {
               resolvedName += `.${extFromMime}`;
+            }
+
+            const allowedByNameOrMime = isAllowedDocumentCandidate({
+              name: resolvedName,
+              url: file.url,
+              mimeType,
+            });
+            const blockedByExtension = hasBlockedExtension(resolvedName) || hasBlockedExtension(file.url);
+
+            if (blockedByExtension) {
+              log.debug(
+                `Rejected metadata candidate (blocked extension): "${resolvedName}" -> ${file.url}`
+              );
+              return null;
+            }
+
+            if (!allowedByNameOrMime) {
+              log.debug(
+                `Rejected metadata candidate (not in allowlist): ` +
+                  `name="${resolvedName}", mime="${mimeType ?? '(none)'}", url="${file.url}"`
+              );
+              return null;
             }
 
             log.debug(
@@ -169,8 +222,9 @@ export class FileDownloader extends EventEmitter {
 
         // Determine the final filename (prefer Content-Disposition, then URL).
         let filename = file.name;
-        const contentDisposition = response.headers['content-disposition'];
-        const contentType = response.headers['content-type'];
+        const contentDisposition = getHeaderString(response.headers['content-disposition']);
+        const contentType = getHeaderString(response.headers['content-type']);
+        const mimeType = contentType?.split(';')[0].trim().toLowerCase();
 
         // Log all relevant headers at debug level for troubleshooting
         log.debug(
@@ -193,7 +247,7 @@ export class FileDownloader extends EventEmitter {
         // 2. If no extension or the extension is a generic placeholder, append from MIME.
         const existingExt = path.extname(filename).slice(1).toLowerCase();
         if (contentType) {
-          const mimeExt = mime.extension(contentType.split(';')[0].trim());
+          const mimeExt = mime.extension(mimeType ?? '');
           if (!existingExt) {
             // No extension at all → append from MIME
             if (mimeExt && mimeExt !== GENERIC_BINARY_EXTENSION) {
@@ -215,6 +269,18 @@ export class FileDownloader extends EventEmitter {
           }
         }
 
+        const blockedByMime = isBlockedMimeType(mimeType);
+        const blockedByExtension = hasBlockedExtension(filename) || hasBlockedExtension(file.url);
+        const allowedFinal = isAllowedDocumentCandidate({ name: filename, url: file.url, mimeType });
+        if (blockedByMime || blockedByExtension || !allowedFinal) {
+          log.warn(
+            `Skipping file not in strict allowlist: ` +
+              `name="${filename}", mime="${mimeType ?? '(none)'}", url="${file.url}"`
+          );
+          this.emit('download:skip', { url: file.url, filename });
+          return;
+        }
+
         filename = sanitizeFilename(filename);
 
         // Ensure the target directory exists.
@@ -227,7 +293,7 @@ export class FileDownloader extends EventEmitter {
         tmpPath = getTmpFilePath(finalPath);
 
         // Track download progress with an inactivity watchdog.
-        const totalSize = parseInt(response.headers['content-length'] || '0', 10);
+        const totalSize = parseInt(getHeaderString(response.headers['content-length']) || '0', 10);
         let downloadedSize = 0;
         let inactivityTimer: ReturnType<typeof setTimeout> | null = null;
 
