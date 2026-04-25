@@ -30,6 +30,14 @@ npm install
 
 Then run launcher again.
 
+## First run feels slow
+
+**Symptom:** first launch takes noticeably longer.
+
+**Why:** dependencies, TypeScript build output, and Playwright Chromium may need to install.
+
+**Fix:** wait for first run to finish; later runs are faster.
+
 ## Playwright install failed
 
 **Symptom:** bootstrap fails at browser install.
@@ -71,6 +79,14 @@ Then rerun launcher.
 **Symptom:** courses load but no downloadable files.
 
 **Fix:** selected sections may not contain allowed document types (pdf/ppt/pptx/doc/docx/xls/xlsx).
+
+## Progress percentage looks different from file count
+
+**Symptom:** percent does not match completed-files ratio exactly.
+
+**Why:** when file sizes are known, progress percentage is byte-based; file count is shown separately.
+
+**Fallback:** if sizes are unknown, progress switches to labeled file-count mode.
 
 ## Permission denied for download folder
 

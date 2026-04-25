@@ -41,7 +41,7 @@ function isDebugMode(): boolean {
   return process.env.DEBUG === '1' || process.env.LOG_LEVEL === 'debug';
 }
 
-function handleUserFacingError(error: unknown, logsPath?: string): never {
+function handleUserFacingError(error: unknown, logsPath?: string): void {
   const friendly = mapToUserError(error, logsPath);
   console.error(chalk.red('\n' + formatUserError(friendly) + '\n'));
 
@@ -49,8 +49,23 @@ function handleUserFacingError(error: unknown, logsPath?: string): never {
     const stack = error instanceof Error ? error.stack || error.message : String(error);
     console.error(chalk.gray('Debug details:\n' + stack + '\n'));
   }
+}
 
-  process.exit(1);
+function formatEta(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds < 0) return '?';
+
+  const rounded = Math.round(seconds);
+  if (rounded < 60) return `${Math.max(0, rounded)}s`;
+
+  if (rounded < 3600) {
+    const minutes = Math.floor(rounded / 60);
+    const remainingSeconds = rounded % 60;
+    return `${minutes}m ${remainingSeconds}s`;
+  }
+
+  const hours = Math.floor(rounded / 3600);
+  const remainingMinutes = Math.floor((rounded % 3600) / 60);
+  return `${hours}h ${String(remainingMinutes).padStart(2, '0')}m`;
 }
 
 function escapeRegexLiteral(input: string): string {
@@ -270,6 +285,8 @@ program
           console.log(chalk.yellow('2) Try HEADLESS=false in setup so you can watch the login flow.'));
           console.log(chalk.yellow('3) Check your network and Blackboard availability.'));
           handleUserFacingError(error, './logs/whiteboard.log');
+          process.exitCode = 1;
+          return;
         } finally {
           if (auth) await auth.close();
         }
@@ -279,6 +296,8 @@ program
       console.log(chalk.white('Use the start script again to launch downloads.\n'));
     } catch (error) {
       handleUserFacingError(error, './logs/whiteboard.log');
+      process.exitCode = 1;
+      return;
     }
   });
 
@@ -417,6 +436,8 @@ program
       process.exit(hasRequiredFailure ? 1 : 0);
     } catch (error) {
       handleUserFacingError(error, './logs/whiteboard.log');
+      process.exitCode = 1;
+      return;
     }
   });
 
@@ -550,7 +571,7 @@ program
 
         if (options.all) {
           selectedCourses = allCourses;
-          console.log(chalk.cyan(`\n�� Processing all ${allCourses.length} courses...\n`));
+          console.log(chalk.cyan(`\n📚 Processing all ${allCourses.length} courses...\n`));
         } else {
           console.log();
           selectedCourses = await selectCoursesInteractively(allCourses);
@@ -614,33 +635,63 @@ program
 
         report.filesSelected = filesToDownload.length;
 
-        const totalExpectedBytes = filesToDownload.reduce((sum, f) => sum + (f.size ?? 0), 0);
-        const barTotal = filesToDownload.length;
-        const totalBytesLabel = totalExpectedBytes > 0 ? formatBytes(totalExpectedBytes) : '?';
+        const totalFilesCount = filesToDownload.length;
+        const knownFileSizes = new Map<string, number>();
+        for (const file of filesToDownload) {
+          if (file.size !== undefined) {
+            knownFileSizes.set(file.url, file.size);
+          }
+        }
+        const knownSizeFileCount = knownFileSizes.size;
+        const unknownSizeFileCount = totalFilesCount - knownSizeFileCount;
+        const totalKnownBytes = Array.from(knownFileSizes.values()).reduce((sum, size) => sum + size, 0);
+        const useByteProgress = totalKnownBytes > 0;
+        const totalLabel = useByteProgress ? formatBytes(totalKnownBytes) : 'file-count';
+        const progressBarTotal = useByteProgress ? totalKnownBytes : totalFilesCount;
+        const unknownFilesSuffix = unknownSizeFileCount > 0 ? ` (+${unknownSizeFileCount} unknown size)` : '';
 
         singleBar = new cliProgress.SingleBar(
           {
             clearOnComplete: false,
             hideCursor: true,
             format:
-              ' {bar} {percentage}% | {completedFiles}/{totalFilesCount} files | {downloadedStr}/{totalStr} | {speedStr} | ETA {eta_formatted}',
+              useByteProgress
+                ? ' {bar} {percentage}% | {downloadedStr}/{totalStr} | {completedFiles}/{totalFilesCount} files{unknownFilesStr} | {speedStr} | ETA {etaStr}'
+                : ' {bar} {percentage}% (file-count) | {completedFiles}/{totalFilesCount} files | {speedStr} | ETA {etaStr}',
           },
           cliProgress.Presets.shades_classic,
         );
 
         const bar = singleBar;
         const fileDownloaded = new Map<string, number>();
-        let totalDownloadedBytes = 0;
+        let totalDownloadedKnownBytes = 0;
         let speedWindowStart = Date.now();
         let speedWindowBytes = 0;
         let currentSpeedBps = 0;
 
+        const refreshSpeed = () => {
+          const now = Date.now();
+          const elapsed = now - speedWindowStart;
+          if (elapsed >= 1000) {
+            currentSpeedBps = speedWindowBytes / (elapsed / 1000);
+            speedWindowStart = now;
+            speedWindowBytes = 0;
+          }
+        };
+
+        const getRemainingKnownBytes = () => Math.max(0, totalKnownBytes - totalDownloadedKnownBytes);
+
         const barPayload = () => ({
           completedFiles: completedFiles + skippedFiles,
-          totalFilesCount: barTotal,
-          downloadedStr: formatBytes(totalDownloadedBytes),
-          totalStr: totalBytesLabel,
-          speedStr: currentSpeedBps > 0 ? `${formatBytes(Math.round(currentSpeedBps))}/s` : '...',
+          totalFilesCount,
+          downloadedStr: formatBytes(totalDownloadedKnownBytes),
+          totalStr: totalLabel,
+          unknownFilesStr: unknownFilesSuffix,
+          speedStr: currentSpeedBps > 0 ? `${formatBytes(Math.round(currentSpeedBps))}/s` : '?',
+          etaStr:
+            useByteProgress && currentSpeedBps > 0
+              ? formatEta(getRemainingKnownBytes() / currentSpeedBps)
+              : '?',
         });
 
         wbDownloader.on('download:start', (file: { url: string; name: string }) => {
@@ -651,49 +702,77 @@ program
           'download:progress',
           (data: { url: string; filename: string; downloaded: number; total: number }) => {
             const prev = fileDownloaded.get(data.url) ?? 0;
-            const delta = Math.max(0, data.downloaded - prev);
-            fileDownloaded.set(data.url, data.downloaded);
-            totalDownloadedBytes += delta;
-            speedWindowBytes += delta;
+            const current = Math.max(prev, data.downloaded);
+            fileDownloaded.set(data.url, current);
 
-            const now = Date.now();
-            const elapsed = now - speedWindowStart;
-            if (elapsed >= 1000) {
-              currentSpeedBps = speedWindowBytes / (elapsed / 1000);
-              speedWindowStart = now;
-              speedWindowBytes = 0;
+            const knownSize = knownFileSizes.get(data.url);
+            if (knownSize !== undefined) {
+              const previousKnownCounted = Math.min(prev, knownSize);
+              const currentKnownCounted = Math.min(current, knownSize);
+              const delta = Math.max(0, currentKnownCounted - previousKnownCounted);
+              totalDownloadedKnownBytes += delta;
+              speedWindowBytes += delta;
             }
 
-            bar.update(completedFiles + skippedFiles, barPayload());
+            refreshSpeed();
+            const barValue = useByteProgress ? totalDownloadedKnownBytes : completedFiles + skippedFiles;
+            bar.update(barValue, barPayload());
           },
         );
 
         wbDownloader.on('download:complete', (data: { url: string; filename: string; size: number }) => {
           completedFiles++;
           const prev = fileDownloaded.get(data.url) ?? 0;
-          const delta = Math.max(0, data.size - prev);
-          totalDownloadedBytes += delta;
-          fileDownloaded.set(data.url, data.size);
-          bar.update(completedFiles + skippedFiles, barPayload());
+          const current = Math.max(prev, data.size);
+          fileDownloaded.set(data.url, current);
+
+          const knownSize = knownFileSizes.get(data.url);
+          if (knownSize !== undefined) {
+            const previousKnownCounted = Math.min(prev, knownSize);
+            const currentKnownCounted = Math.min(current, knownSize);
+            const delta = Math.max(0, currentKnownCounted - previousKnownCounted);
+            totalDownloadedKnownBytes += delta;
+            speedWindowBytes += delta;
+          }
+
+          refreshSpeed();
+          const barValue = useByteProgress ? totalDownloadedKnownBytes : completedFiles + skippedFiles;
+          bar.update(barValue, barPayload());
         });
 
         wbDownloader.on('download:error', (data: { url: string; filename: string; error: string }) => {
           failedFiles++;
           report.failedFiles.push({ name: data.filename, reason: data.error || 'Unknown error' });
-          bar.update(completedFiles + skippedFiles, barPayload());
+          refreshSpeed();
+          const barValue = useByteProgress ? totalDownloadedKnownBytes : completedFiles + skippedFiles;
+          bar.update(barValue, barPayload());
         });
 
-        wbDownloader.on('download:skip', (_data: { url: string; filename: string }) => {
+        wbDownloader.on('download:skip', (data: { url: string; filename: string }) => {
           skippedFiles++;
-          bar.update(completedFiles + skippedFiles, barPayload());
+          const knownSize = knownFileSizes.get(data.url);
+          if (knownSize !== undefined) {
+            const prev = fileDownloaded.get(data.url) ?? 0;
+            const previousKnownCounted = Math.min(prev, knownSize);
+            const currentKnownCounted = knownSize;
+            const delta = Math.max(0, currentKnownCounted - previousKnownCounted);
+            totalDownloadedKnownBytes += delta;
+            speedWindowBytes += delta;
+            fileDownloaded.set(data.url, Math.max(prev, knownSize));
+          }
+          refreshSpeed();
+          const barValue = useByteProgress ? totalDownloadedKnownBytes : completedFiles + skippedFiles;
+          bar.update(barValue, barPayload());
         });
 
-        singleBar.start(barTotal, 0, {
+        singleBar.start(progressBarTotal, 0, {
           completedFiles: 0,
-          totalFilesCount: barTotal,
+          totalFilesCount,
           downloadedStr: '0 B',
-          totalStr: totalBytesLabel,
-          speedStr: '...',
+          totalStr: totalLabel,
+          unknownFilesStr: unknownFilesSuffix,
+          speedStr: '?',
+          etaStr: '?',
         });
 
         filesToDownload.sort((a, b) => {
@@ -731,6 +810,8 @@ program
     } catch (error) {
       report.runError = error instanceof Error ? error.message : String(error);
       handleUserFacingError(error, report.logFilePath);
+      process.exitCode = 1;
+      return;
     } finally {
       if (wbDownloader) {
         await wbDownloader.cleanup();
@@ -778,6 +859,8 @@ program
       console.log(chalk.yellow('\n💡 Tip: Run "whiteboard-dl setup" to configure settings\n'));
     } catch (error) {
       handleUserFacingError(error, './logs/whiteboard.log');
+      process.exitCode = 1;
+      return;
     }
   });
 

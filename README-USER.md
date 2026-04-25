@@ -2,6 +2,8 @@
 
 ## First run
 
+Before starting, install Node.js **20.x or 22.x LTS** manually (`24.x` is not supported).
+
 1. Download the project ZIP from GitHub Releases.
 2. Unzip it.
 3. Double-click:
@@ -13,6 +15,8 @@
    - Download folder
 5. Select courses and files in the checkbox screens.
 
+> First run may take extra time while dependencies, build output, and Playwright Chromium are prepared.
+
 ## Where files go
 
 By default: `./downloads` inside the unzipped folder.
@@ -21,6 +25,8 @@ You can change this in setup.
 ## Run again later
 
 Use the same launcher file again. Setup is reused automatically.
+
+During downloads, percentage is byte-based when sizes are known; file count remains visible as secondary progress.
 
 ## Reset setup
 
