@@ -17,5 +17,5 @@
     "ignoreDeprecations": "5.0"
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist", "tests", "src/gui", "src/gui/renderer"]
+  "exclude": ["node_modules", "dist", "tests", "src/gui"]
 }
