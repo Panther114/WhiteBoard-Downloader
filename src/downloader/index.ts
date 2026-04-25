@@ -6,7 +6,6 @@ import https from 'https';
 import { EventEmitter } from 'events';
 import pLimit from 'p-limit';
 import pRetry from 'p-retry';
-import mime from 'mime-types';
 import { Config, DiscoveredFile, DownloadableFile, FileTree } from '../types';
 import { log } from '../utils/logger';
 import {
@@ -25,6 +24,7 @@ import {
   isAllowedDocumentCandidate,
   isBlockedMimeType,
 } from '../utils/fileValidation';
+import { normalizeSupportedFilename } from '../utils/fileType';
 import { DownloadDatabase } from '../database';
 import { addFileToTree, saveFileTree } from '../fileTree';
 
@@ -33,9 +33,6 @@ const INACTIVITY_TIMEOUT_MS = 30_000;
 
 /** Timeout for HEAD requests used to fetch file metadata. */
 const HEAD_REQUEST_TIMEOUT_MS = 5_000;
-
-/** The generic-binary MIME extension returned by mime-types for unrecognised content. */
-const GENERIC_BINARY_EXTENSION = 'bin';
 
 /** MIME type prefixes that indicate audio/video content (blocked). */
 const BLOCKED_MEDIA_MIME_PREFIXES = ['video/', 'audio/'];
@@ -129,11 +126,7 @@ export class FileDownloader extends EventEmitter {
               return null;
             }
 
-            const extFromMime = mimeType ? mime.extension(mimeType) : false;
             const extFromName = getAllowedExtFromName(file.name) ?? path.extname(file.name).slice(1);
-            const fileType = (
-              (extFromMime && extFromMime !== GENERIC_BINARY_EXTENSION ? extFromMime : extFromName) || undefined
-            )?.toUpperCase();
 
             // Parse Content-Disposition to get the real server-side filename
             let resolvedName = file.name;
@@ -143,10 +136,9 @@ export class FileDownloader extends EventEmitter {
               if (parsed) resolvedName = parsed;
             }
 
-            // If the resolved name still has no extension, append from MIME
-            if (!path.extname(resolvedName) && extFromMime && extFromMime !== GENERIC_BINARY_EXTENSION) {
-              resolvedName += `.${extFromMime}`;
-            }
+            const normalization = normalizeSupportedFilename(resolvedName, mimeType);
+            resolvedName = normalization.normalizedName;
+            const fileType = (normalization.extension ?? extFromName)?.toUpperCase();
 
             const allowedByNameOrMime = isAllowedDocumentCandidate({
               name: resolvedName,
@@ -162,7 +154,7 @@ export class FileDownloader extends EventEmitter {
               return null;
             }
 
-            if (!allowedByNameOrMime) {
+            if (!normalization.accepted || !allowedByNameOrMime) {
               log.debug(
                 `Rejected metadata candidate (not in allowlist): ` +
                   `name="${resolvedName}", mime="${mimeType ?? '(none)'}", url="${file.url}"`
@@ -242,31 +234,14 @@ export class FileDownloader extends EventEmitter {
           filename = extractFilenameFromUrl(file.url);
         }
 
-        // Extension resolution: ensure the filename has a valid extension.
-        // 1. If the filename already has an extension, validate it against Content-Type.
-        // 2. If no extension or the extension is a generic placeholder, append from MIME.
-        const existingExt = path.extname(filename).slice(1).toLowerCase();
-        if (contentType) {
-          const mimeExt = mime.extension(mimeType ?? '');
-          if (!existingExt) {
-            // No extension at all → append from MIME
-            if (mimeExt && mimeExt !== GENERIC_BINARY_EXTENSION) {
-              filename += `.${mimeExt}`;
-              log.debug(`Appended MIME extension: "${filename}" (from ${contentType})`);
-            }
-          } else if (
-            mimeExt &&
-            mimeExt !== GENERIC_BINARY_EXTENSION &&
-            existingExt !== mimeExt &&
-            // Don't "fix" close variants like doc/docx, xls/xlsx, ppt/pptx
-            !existingExt.startsWith(mimeExt) &&
-            !mimeExt.startsWith(existingExt)
-          ) {
-            // Extension disagrees with MIME — prefer MIME-derived extension
-            const base = path.basename(filename, path.extname(filename));
-            filename = `${base}.${mimeExt}`;
-            log.debug(`Corrected extension: "${filename}" (MIME ${contentType} → .${mimeExt})`);
-          }
+        const normalization = normalizeSupportedFilename(filename, mimeType);
+        filename = normalization.normalizedName;
+        if (!normalization.accepted) {
+          log.warn(
+            `Skipping file not in strict allowlist: name="${filename}", mime="${mimeType ?? '(none)'}", url="${file.url}"`
+          );
+          this.emit('download:skip', { url: file.url, filename });
+          return;
         }
 
         const blockedByMime = isBlockedMimeType(mimeType);
