@@ -143,6 +143,11 @@ program
   .option('-d, --dir <directory>', 'Download directory', './downloads')
   .option('--headless <boolean>', 'Run browser in headless mode', 'true')
   .option('--filter <pattern>', 'Course filter regex pattern')
+  .option(
+    '--include-non-subject-courses',
+    'Include broad/non-subject organisation courses during automatic course filtering',
+    false
+  )
   .option('--all', 'Skip the selection GUI and download everything')
   .action(async (options) => {
     try {
@@ -200,6 +205,7 @@ program
         downloadDir: options.dir,
         headless: options.headless === 'true',
         courseFilter: options.filter,
+        includeNonSubjectCourses: Boolean(options.includeNonSubjectCourses),
       });
 
       console.log(chalk.gray(`\nDownload directory: ${config.downloadDir}`));
@@ -207,6 +213,9 @@ program
       if (config.courseFilter) {
         console.log(chalk.gray(`Course filter: ${config.courseFilter}`));
       }
+      console.log(
+        chalk.gray(`Include non-subject courses: ${config.includeNonSubjectCourses ? 'yes' : 'no'}`)
+      );
       console.log();
 
       const spinner = ora('Initializing...').start();
@@ -470,6 +479,7 @@ program
         'Database Path': config.databasePath,
         'Log Level': config.logLevel,
         'Log File': config.logFile,
+        'Include Non-Subject Courses': config.includeNonSubjectCourses,
         'Max Retries': config.maxRetries,
         'Retry Delay': `${config.retryDelay}ms`,
       };

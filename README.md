@@ -44,7 +44,9 @@ Modern, async-first automation tool to download course materials from **SHSID Bl
 - ✅ **Course Filtering**: Filter courses by regex pattern
 - ✅ **Organized Structure**: Maintains Blackboard's folder hierarchy
 - ✅ **Resume Capability**: Resume interrupted downloads from where you left off
-- ✅ **Media File Exclusion**: Audio/video files (mp4, mp3, mov, etc.) are automatically excluded from discovery and download
+- ✅ **Strict Academic File Allowlist**: Only PDF, PowerPoint, Word, and Excel documents are discoverable/downloadable
+- ✅ **Non-Document Rejection**: Archives, images, media, text/data files, tool pages, and external links are filtered out
+- ✅ **Subject-Course Default Filtering**: Broad organisation pages are skipped by default unless explicitly enabled
 - ✅ **File Tree Cache**: JSON-based file-tree cache (`file_tree.json`) mirrors Blackboard's hierarchy for fast duplicate detection
 - ✅ **Cross-Platform**: Works on Windows, macOS, and Linux
 - ✅ **Docker Support**: Run in isolated container environment
@@ -214,6 +216,7 @@ All configuration can be set via `.env` file or environment variables:
 | `LOG_LEVEL` | Logging level | `info` |
 | `LOG_FILE` | Log file path | `./logs/whiteboard.log` |
 | `COURSE_FILTER` | Course regex filter | *(none)* |
+| `INCLUDE_NON_SUBJECT_COURSES` | Include broad organisation courses when no `COURSE_FILTER` is set | `false` |
 | `MAX_RETRIES` | Max retry attempts | `3` |
 | `RETRY_DELAY` | Retry delay (ms) | `2000` |
 | `FILE_TREE_PATH` | JSON file-tree cache path | `<DOWNLOAD_DIR>/file_tree.json` |
@@ -272,6 +275,9 @@ node dist/cli.js download --headless false
 # Filter courses by pattern (e.g., only 2025 spring semester)
 node dist/cli.js download --filter "^2025I.*"
 
+# Include broad/non-subject organisation courses
+node dist/cli.js download --include-non-subject-courses
+
 # Combine options
 node dist/cli.js download \
   --dir ./downloads \
@@ -293,9 +299,30 @@ rm whiteboard.db
 npm start
 ```
 
-### Media File Exclusion
+### Supported vs Unsupported File Types
 
-Audio and video files (mp4, mp3, mov, avi, mkv, wmv, webm, flv, wav, aac, ogg, m4a, m4v) are automatically excluded from discovery and never appear in the download selection list. This prevents accidentally downloading large lecture recordings or media files.
+The scraper/downloader uses strict two-stage validation (discovery + metadata/download validation).
+
+Supported extensions:
+- `.pdf`
+- `.ppt`
+- `.pptx`
+- `.doc`
+- `.docx`
+- `.xls`
+- `.xlsx`
+
+Unsupported files/pages are rejected, including:
+- Archives: `.zip`, `.rar`, `.7z`, `.gz`
+- Images/media: `.png`, `.jpg`, `.jpeg`, audio/video MIME types
+- Text/data: `.txt`, `.csv`, `.json`, `.xml`
+- Blackboard non-file/tool links (quizzes, announcements, discussion/calendar/gradebook/tool/module pages)
+- External websites
+
+Why metadata validation is still required:
+- Blackboard file endpoints often do not expose an extension in the URL.
+- Final filename may only be available from `Content-Disposition`.
+- MIME type + final resolved filename are re-validated before writing to disk (defense-in-depth).
 
 ### File Tree Cache
 

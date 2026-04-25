@@ -2,7 +2,13 @@ import { Page } from 'playwright';
 import { Config, Course, ContentFolder, DownloadableFile, SidebarLink } from '../types';
 import { log } from '../utils/logger';
 import { sanitizeFilename, extractFilenameFromUrl, dumpPageStructure } from '../utils/helpers';
-import path from 'path';
+import {
+  ALLOWED_DOC_EXT_RE,
+  getAllowedExtFromName,
+  hasBlockedExtension,
+  isAllowedDocumentCandidate,
+  safelyDecode,
+} from '../utils/fileValidation';
 
 /** Milliseconds to wait for #content_listContainer before giving up on a page. */
 const CONTENT_CONTAINER_TIMEOUT_MS = 12_000;
@@ -32,26 +38,119 @@ const NAV_HREF_PATTERNS = [
 /** Known-safe execute/ URL fragments that are actual file downloads. */
 const SAFE_EXECUTE_PATTERNS = ['execute/content'];
 
-/**
- * File extensions that are always treated as downloadable regardless of
- * other heuristics.
- *
- * NOTE: media formats (mp4, mov, avi, mkv, wmv, mp3, wav, etc.) are intentionally
- * excluded — they are blocked by BLOCKED_MEDIA_RE below.
- */
-const FILE_EXT_RE =
-  /\.(pdf|pptx?|docx?|xlsx?|zip|rar|7z|gz|png|jpg|jpeg|gif|bmp|svg|txt|csv|json|xml)$/i;
+/** Course names that are likely organisational pages rather than subject classes. */
+const NON_SUBJECT_COURSE_PATTERNS = [
+  /000\s*high\s*school\s*students/i,
+  /010\s*students/i,
+  /writing\s*center/i,
+  /college\s*counseling/i,
+  /newsletter/i,
+  /\[expired\]/i,
+  /students\s*20\d{2}/i,
+];
 
-/**
- * Media extensions that are always blocked from discovery and download.
- */
-const BLOCKED_MEDIA_RE =
-  /\.(mp4|mp3|mov|avi|mkv|wmv|webm|flv|wav|aac|ogg|m4a|m4v)$/i;
+/** Subject signals used only for logging / ranking confidence. */
+const LIKELY_SUBJECT_PATTERNS = [
+  /chemistry/i,
+  /biology/i,
+  /physics/i,
+  /history/i,
+  /english/i,
+  /chinese|中文|语文/i,
+  /math|mathematics|数学/i,
+  /geometry/i,
+  /algebra/i,
+  /calculus/i,
+  /computer/i,
+  /programming/i,
+  /economics/i,
+  /literature/i,
+  /psychology/i,
+  /statistics/i,
+  /\bap\b/i,
+  /honors/i,
+];
 
-/**
- * MIME type prefixes that indicate audio/video content (blocked).
- */
-const BLOCKED_MEDIA_MIME_PREFIXES = ['video/', 'audio/'];
+export interface RawContentLink {
+  href: string;
+  text: string;
+  inAttachments: boolean;
+  inDetails: boolean;
+  nearAttachedFiles: boolean;
+  itemText: string;
+}
+
+function normalizeAbsoluteUrl(href: string, baseUrl: string): string | undefined {
+  if (!href) return undefined;
+  try {
+    return new URL(href, baseUrl).toString();
+  } catch {
+    return undefined;
+  }
+}
+
+function isNavigationHref(href: string): boolean {
+  return NAV_HREF_PATTERNS.some(p => href.includes(p));
+}
+
+function isExternalUrl(url: string, baseUrl: string): boolean {
+  try {
+    const parsed = new URL(url);
+    const base = new URL(baseUrl);
+    return parsed.origin !== base.origin;
+  } catch {
+    return true;
+  }
+}
+
+export function collectDownloadCandidates(
+  rawLinks: RawContentLink[],
+  baseUrl: string,
+  savePath: string,
+): DownloadableFile[] {
+  const files: DownloadableFile[] = [];
+  const seenUrls = new Set<string>();
+
+  for (const raw of rawLinks) {
+    const href = raw.href.trim();
+    const text = safelyDecode(raw.text.trim());
+
+    if (!href || isNavigationHref(href)) continue;
+
+    const fullUrl = normalizeAbsoluteUrl(href, baseUrl);
+    if (!fullUrl || isExternalUrl(fullUrl, baseUrl)) continue;
+    if (seenUrls.has(fullUrl)) continue;
+
+    const isBbcs = href.includes('/bbcswebdav/');
+    const isContentFile = href.includes('content/file');
+    const isExecuteContent = href.includes('execute/content');
+    const textHasAllowedExt = Boolean(getAllowedExtFromName(text));
+    const urlHasAllowedExt = ALLOWED_DOC_EXT_RE.test(new URL(fullUrl, baseUrl).pathname);
+    const candidatePositive =
+      isBbcs ||
+      isContentFile ||
+      isExecuteContent ||
+      raw.inAttachments ||
+      raw.nearAttachedFiles ||
+      raw.inDetails ||
+      textHasAllowedExt ||
+      urlHasAllowedExt;
+
+    if (!candidatePositive) continue;
+
+    if (href.includes('execute/') && !SAFE_EXECUTE_PATTERNS.some(p => href.includes(p))) continue;
+    if (hasBlockedExtension(text) || hasBlockedExtension(fullUrl)) continue;
+
+    const allowedCandidate = isAllowedDocumentCandidate({ name: text, url: fullUrl });
+    if (!allowedCandidate && !isBbcs && !isContentFile && !isExecuteContent) continue;
+
+    seenUrls.add(fullUrl);
+    const displayName = text || extractFilenameFromUrl(fullUrl) || 'file';
+    files.push({ name: displayName, url: fullUrl, path: savePath, status: 'pending' });
+  }
+
+  return files;
+}
 
 export class BlackboardScraper {
   private page: Page;
@@ -98,8 +197,9 @@ export class BlackboardScraper {
 
   /**
    * Get list of courses from the main page.
-   * If `courseFilter` is set, only matching courses are returned.
-   * With no filter, ALL courses are returned (with a warning).
+   * If COURSE_FILTER is set, only matching courses are returned.
+   * Otherwise, organisational courses are excluded by default unless
+   * includeNonSubjectCourses=true.
    */
   async getCourses(): Promise<Course[]> {
     log.info('Fetching course list...');
@@ -132,14 +232,8 @@ export class BlackboardScraper {
       }
     }
 
-    if (!this.config.courseFilter) {
-      log.warn(
-        'No COURSE_FILTER set — all courses will be processed. ' +
-          'Set COURSE_FILTER (regex) in .env to limit which courses are downloaded.'
-      );
-    }
-
     const courses: Course[] = [];
+    const skipped: Array<{ name: string; reason: string }> = [];
 
     for (const { href, text } of rawCourses) {
       if (!href || !text) continue;
@@ -147,19 +241,34 @@ export class BlackboardScraper {
       const courseName = text.trim().replace(/[\/\\]/g, '_');
       log.debug(`Processing course: "${courseName}" href="${href}"`);
 
-      // Apply course filter if configured; otherwise accept everything.
+      const normalizedName = text.trim();
+
       if (this.config.courseFilter) {
         const regex = new RegExp(this.config.courseFilter);
-        if (!regex.test(text.trim())) {
-          log.debug(`Skipping course: ${courseName} (does not match filter)`);
+        if (!regex.test(normalizedName)) {
+          const reason = 'does not match COURSE_FILTER';
+          log.debug(`Skipping course: ${courseName} (${reason})`);
+          skipped.push({ name: courseName, reason });
+          continue;
+        }
+      } else if (!this.config.includeNonSubjectCourses) {
+        const isNonSubject = NON_SUBJECT_COURSE_PATTERNS.some(pattern => pattern.test(normalizedName));
+        if (isNonSubject) {
+          const reason = 'matches non-subject course pattern';
+          log.debug(`Skipping course: ${courseName} (${reason})`);
+          skipped.push({ name: courseName, reason });
           continue;
         }
       }
 
       const cleanHref = href.trim();
       const fullUrl = cleanHref.startsWith('http') ? cleanHref : `${this.config.baseUrl}${cleanHref}`;
+      const matchedSubjectSignal = LIKELY_SUBJECT_PATTERNS.some(pattern => pattern.test(normalizedName));
 
-      log.debug(`Adding course: "${courseName}" -> ${fullUrl}`);
+      log.debug(
+        `Adding course: "${courseName}" -> ${fullUrl} ` +
+          `(subjectSignal=${matchedSubjectSignal ? 'yes' : 'no'})`
+      );
       courses.push({
         id: href.split('id=')[1] || '',
         name: courseName,
@@ -168,7 +277,15 @@ export class BlackboardScraper {
       });
     }
 
-    log.info(`Found ${courses.length} courses matching filters`);
+    log.info(`Course discovery: found ${rawCourses.length}, included ${courses.length}, skipped ${skipped.length}`);
+    if (skipped.length > 0) {
+      const details = skipped.map(s => `${s.name} (${s.reason})`).join('; ');
+      log.info(`Skipped courses: ${details}`);
+      log.info(
+        'Override behavior with COURSE_FILTER (regex) or INCLUDE_NON_SUBJECT_COURSES=true to include broad pages.'
+      );
+    }
+
     return courses;
   }
 
@@ -202,34 +319,45 @@ export class BlackboardScraper {
       els.map(el => ({
         href: el.getAttribute('href') ?? '',
         title: el.querySelector('span')?.getAttribute('title') ?? '',
+        text: el.textContent ?? '',
       }))
     );
     log.debug(`Found ${rawLinks.length} sidebar link elements`);
 
-    const links: SidebarLink[] = [];
+    const candidates: SidebarLink[] = [];
+    const isExcludedTitle = (title: string): boolean => {
+      const normalized = title.toLowerCase();
+      return ['home page', 'discussions', 'groups', 'tools', 'help'].includes(normalized);
+    };
 
-    for (const { href, title } of rawLinks) {
-      if (!href || !title) continue;
+    const isToolLike = (title: string): boolean =>
+      /discussion|group|tool|help|announcement|calendar|grade/i.test(title);
 
-      log.debug(`Processing sidebar link: "${title}" href="${href}"`);
-      const normalizedTitle = title.trim().toLowerCase();
+    const isContentLike = (title: string): boolean =>
+      /\bcontent\b|课程内容|教学内容|內容/i.test(title);
 
-      // Skip non-content pages
-      if (['home page', 'discussions', 'groups', 'tools', 'help'].includes(normalizedTitle)) {
-        log.debug(`Skipping non-content page: ${title}`);
+    for (const { href, title, text } of rawLinks) {
+      const rawTitle = (title || text).trim();
+      if (!href || !rawTitle) continue;
+
+      log.debug(`Sidebar link found: "${rawTitle}" href="${href}"`);
+      if (isExcludedTitle(rawTitle) || isToolLike(rawTitle)) {
+        log.debug(`Skipping sidebar link: "${rawTitle}" (tool/non-content)`);
         continue;
       }
 
       const cleanHref = href.trim();
       const fullUrl = cleanHref.startsWith('http') ? cleanHref : `${this.config.baseUrl}${cleanHref}`;
 
-      log.debug(`Adding sidebar link: "${title}" -> ${fullUrl}`);
-      links.push({
-        title: title.trim().replace(/[\/\\]/g, '_'),
+      candidates.push({
+        title: rawTitle.replace(/[\/\\]/g, '_'),
         url: fullUrl,
-        path: sanitizeFilename(title.trim().replace(/[\/\\]/g, '_')),
+        path: sanitizeFilename(rawTitle.replace(/[\/\\]/g, '_')),
       });
     }
+
+    const contentLike = candidates.filter(link => isContentLike(link.title));
+    const links = contentLike.length > 0 ? contentLike : candidates;
 
     log.debug(`Found ${links.length} sidebar links (after filtering)`);
     return links;
@@ -289,64 +417,21 @@ export class BlackboardScraper {
       els.map(el => ({
         href: el.getAttribute('href') ?? '',
         text: el.textContent ?? '',
-        target: el.getAttribute('target') ?? '',
         inAttachments: el.closest('.attachments') !== null,
         inDetails: el.closest('.details') !== null,
+        nearAttachedFiles: /attached files?/i.test(
+          `${el.parentElement?.textContent ?? ''} ${el.closest('.item')?.textContent ?? ''}`
+        ),
+        itemText: (el.closest('li.liItem,div.item,li')?.textContent ?? '').trim().substring(0, 240),
       }))
     );
+    const candidates = collectDownloadCandidates(rawLinks, this.config.baseUrl, basePath);
 
-    const isNavHref = (href: string): boolean =>
-      NAV_HREF_PATTERNS.some(p => href.includes(p));
-
-    for (const { href, text, target, inAttachments, inDetails } of rawLinks) {
-      if (!href || isNavHref(href)) {
-        if (href) log.debug(`Rejected link (nav pattern): "${text.trim().substring(0, 60)}" -> ${href}`);
-        continue;
-      }
-
-      // Block media files by URL extension
-      if (BLOCKED_MEDIA_RE.test(href)) {
-        log.debug(`Skipping media file (blocked extension): "${text.trim().substring(0, 60)}" -> ${href}`);
-        continue;
-      }
-
-      // Check whether this link matches any of the 7 download patterns.
-      const isBlank = target === '_blank';
-      const isBbcs = href.includes('/bbcswebdav/');
-      const isContentFile = href.includes('content/file');
-      const isExecuteContent = href.includes('execute/content');
-      const isExtHeuristic = FILE_EXT_RE.test(href);
-
-      if (!isBlank && !isBbcs && !isContentFile && !isExecuteContent && !inAttachments && !inDetails && !isExtHeuristic) {
-        continue;
-      }
-
-      // Flag ambiguous execute/ links that aren't in the known-safe list.
-      // These may be quiz/assignment/tool pages rather than real files.
-      if (href.includes('execute/') && !SAFE_EXECUTE_PATTERNS.some(p => href.includes(p))) {
-        // Only accept if it also has a strong positive signal (bbcswebdav or known extension)
-        if (!isBbcs && !isExtHeuristic) {
-          log.debug(
-            `Rejected ambiguous execute/ link: "${text.trim().substring(0, 60)}" -> ${href}`
-          );
-          continue;
-        }
-      }
-
-      const fullUrl = href.startsWith('http') ? href : `${this.config.baseUrl}${href}`;
-      if (seenUrls.has(fullUrl)) continue;
-      seenUrls.add(fullUrl);
-
-      // Block media files by URL extension on the resolved URL as well
-      const urlExt = path.extname(new URL(fullUrl, this.config.baseUrl).pathname).toLowerCase();
-      if (BLOCKED_MEDIA_RE.test(urlExt)) {
-        log.debug(`Skipping media file (resolved URL ext): "${text.trim().substring(0, 60)}" -> ${fullUrl}`);
-        continue;
-      }
-
-      const displayName = text.trim() || extractFilenameFromUrl(fullUrl);
-      log.debug(`Found downloadable file: "${displayName}" -> ${fullUrl}`);
-      files.push({ name: displayName, url: fullUrl, path: basePath, status: 'pending' });
+    for (const file of candidates) {
+      if (seenUrls.has(file.url)) continue;
+      seenUrls.add(file.url);
+      log.debug(`Found downloadable candidate: "${file.name}" -> ${file.url}`);
+      files.push(file);
     }
 
     log.info(`Found ${files.length} downloadable files in current folder`);
