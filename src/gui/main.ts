@@ -122,6 +122,13 @@ function resolveNodePathFromSystemPath(): string {
   return 'node';
 }
 
+function getWorkerEnv(): NodeJS.ProcessEnv {
+  return {
+    ...process.env,
+    ...readEnvFile(path.resolve('.env')),
+  };
+}
+
 function handleWorkerMessage(message: WorkerOutgoingMessage): void {
   if (message.kind === 'ready') {
     workerReadyResolve?.();
@@ -182,7 +189,7 @@ function spawnGuiWorker(): Promise<void> {
   const nodePath = resolveNodePathFromSystemPath();
   worker = spawn(nodePath, [workerPath], {
     cwd: process.cwd(),
-    env: process.env,
+    env: getWorkerEnv(),
     stdio: ['pipe', 'pipe', 'pipe'],
   });
   worker.stdout.setEncoding('utf-8');
@@ -426,6 +433,8 @@ app.whenReady().then(() => {
     };
 
     writeEnvFile(envPath, values, { preserveEmptyPassword: true });
+    const effectiveEnv = readEnvFile(envPath);
+    Object.assign(process.env, effectiveEnv);
 
     if (payload.testLogin) {
       const cfg = getConfig({ headless: Boolean(payload.headless) });
