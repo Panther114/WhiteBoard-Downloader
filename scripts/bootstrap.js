@@ -67,6 +67,15 @@ function localBinExists(name) {
   return fs.existsSync(path.join(ROOT, 'node_modules', '.bin', binName(name)));
 }
 
+function electronHealthy() {
+  try {
+    const electronPath = require('electron');
+    return typeof electronPath === 'string' && fs.existsSync(electronPath);
+  } catch {
+    return false;
+  }
+}
+
 function dependenciesHealthy(mode) {
   const nodeModulesPath = path.join(ROOT, 'node_modules');
   if (!fs.existsSync(nodeModulesPath)) return false;
@@ -75,7 +84,15 @@ function dependenciesHealthy(mode) {
   const guiBins = ['vite', 'electron'];
   const requiredBins = mode === 'gui' ? [...baseBins, ...guiBins] : baseBins;
 
-  return requiredBins.every(localBinExists);
+  if (!requiredBins.every(localBinExists)) {
+    return false;
+  }
+
+  if (mode === 'gui' && !electronHealthy()) {
+    return false;
+  }
+
+  return true;
 }
 
 function installDependencies(mode) {
