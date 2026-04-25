@@ -125,7 +125,12 @@ export function collectDownloadCandidates(
     const isContentFile = href.includes('content/file');
     const isExecuteContent = href.includes('execute/content');
     const textHasAllowedExt = Boolean(getAllowedExtFromName(text));
-    const urlHasAllowedExt = ALLOWED_DOC_EXT_RE.test(new URL(fullUrl, baseUrl).pathname);
+    let urlHasAllowedExt = false;
+    try {
+      urlHasAllowedExt = ALLOWED_DOC_EXT_RE.test(new URL(fullUrl).pathname);
+    } catch {
+      continue;
+    }
     const candidatePositive =
       isBbcs ||
       isContentFile ||

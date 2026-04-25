@@ -322,7 +322,8 @@ Unsupported files/pages are rejected, including:
 Why metadata validation is still required:
 - Blackboard file endpoints often do not expose an extension in the URL.
 - Final filename may only be available from `Content-Disposition`.
-- MIME type + final resolved filename are re-validated before writing to disk (defense-in-depth).
+- A link can look like a file during discovery but resolve to a tool/non-document response at download time.
+- MIME type + final resolved filename are re-validated before writing to disk so only truly allowed documents are saved (defense-in-depth).
 
 ### File Tree Cache
 

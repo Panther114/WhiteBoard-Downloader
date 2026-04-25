@@ -11,6 +11,8 @@ export const ALLOWED_FILE_EXTENSIONS = new Set([
 ]);
 
 export const ALLOWED_DOC_EXT_RE = /\.(pdf|pptx?|docx?|xlsx?)$/i;
+const ALLOWED_EXT_PATTERN = Array.from(ALLOWED_FILE_EXTENSIONS).join('|');
+const ALLOWED_EXT_TOKEN_RE = new RegExp(`\\.(${ALLOWED_EXT_PATTERN})\\b`, 'i');
 
 export const ALLOWED_MIME_TYPES = new Set([
   'application/pdf',
@@ -53,6 +55,8 @@ const BLOCKED_EXTENSIONS = new Set([
   'json',
   'xml',
 ]);
+const BLOCKED_EXT_PATTERN = Array.from(BLOCKED_EXTENSIONS).join('|');
+const BLOCKED_EXT_RE = new RegExp(`\\.(${BLOCKED_EXT_PATTERN})\\b`, 'i');
 
 const BLOCKED_MIME_TYPES = new Set([
   'application/zip',
@@ -103,7 +107,7 @@ export function getAllowedExtFromName(nameOrUrl: string): string | undefined {
   const directExt = getExtensionFromPathLike(normalized);
   if (directExt && ALLOWED_FILE_EXTENSIONS.has(directExt)) return directExt;
 
-  const trailingMatch = normalized.match(/\.(pdf|pptx?|docx?|xlsx?)\b/i);
+  const trailingMatch = normalized.match(ALLOWED_EXT_TOKEN_RE);
   const trailingExt = trailingMatch?.[1]?.toLowerCase();
   return trailingExt && ALLOWED_FILE_EXTENSIONS.has(trailingExt) ? trailingExt : undefined;
 }
@@ -136,7 +140,7 @@ export function hasBlockedExtension(nameOrUrl?: string): boolean {
   const ext = getExtensionFromUrlPath(nameOrUrl) ?? getExtensionFromPathLike(nameOrUrl);
   if (ext && BLOCKED_EXTENSIONS.has(ext)) return true;
 
-  const fromName = safelyDecode(nameOrUrl).match(/\.(zip|rar|7z|gz|png|jpg|jpeg|gif|bmp|svg|webp|heic|mp4|mp3|mov|avi|mkv|wmv|webm|flv|wav|aac|ogg|m4a|m4v|txt|csv|json|xml)\b/i)?.[1]?.toLowerCase();
+  const fromName = safelyDecode(nameOrUrl).match(BLOCKED_EXT_RE)?.[1]?.toLowerCase();
   return Boolean(fromName && BLOCKED_EXTENSIONS.has(fromName));
 }
 

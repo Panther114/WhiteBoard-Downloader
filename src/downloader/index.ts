@@ -23,7 +23,6 @@ import {
   getAllowedExtFromName,
   hasBlockedExtension,
   isAllowedDocumentCandidate,
-  isAllowedMimeType,
   isBlockedMimeType,
 } from '../utils/fileValidation';
 import { DownloadDatabase } from '../database';
@@ -41,8 +40,20 @@ const GENERIC_BINARY_EXTENSION = 'bin';
 /** MIME type prefixes that indicate audio/video content (blocked). */
 const BLOCKED_MEDIA_MIME_PREFIXES = ['video/', 'audio/'];
 
+/**
+ * Normalize Axios header values to a plain string.
+ * Axios header entries can be string/number/boolean/array/object/null, but the
+ * downloader metadata checks expect a simple string when possible.
+ */
 function getHeaderString(
-  value: string | number | true | string[] | import('axios').AxiosHeaders | undefined,
+  value:
+    | string
+    | number
+    | boolean
+    | string[]
+    | import('axios').AxiosHeaders
+    | null
+    | undefined,
 ): string | undefined {
   if (typeof value === 'string') return value;
   if (typeof value === 'number') return String(value);
@@ -143,8 +154,6 @@ export class FileDownloader extends EventEmitter {
               mimeType,
             });
             const blockedByExtension = hasBlockedExtension(resolvedName) || hasBlockedExtension(file.url);
-            const hasAllowedExtension = Boolean(getAllowedExtFromName(resolvedName));
-            const hasAllowedMime = isAllowedMimeType(mimeType);
 
             if (blockedByExtension) {
               log.debug(
@@ -153,7 +162,7 @@ export class FileDownloader extends EventEmitter {
               return null;
             }
 
-            if (!allowedByNameOrMime || (!hasAllowedMime && !hasAllowedExtension)) {
+            if (!allowedByNameOrMime) {
               log.debug(
                 `Rejected metadata candidate (not in allowlist): ` +
                   `name="${resolvedName}", mime="${mimeType ?? '(none)'}", url="${file.url}"`
