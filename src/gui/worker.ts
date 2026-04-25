@@ -1,4 +1,4 @@
-import { getConfig } from '../config';
+import { compactConfigOverrides, getConfig } from '../config';
 import { Course, DiscoveredFile } from '../types';
 import { writeRunSummary, RunSummaryReport } from '../utils/runSummary';
 import { DownloadWorkflow } from '../workflow/downloadWorkflow';
@@ -94,14 +94,22 @@ async function startWorkflow(payload: WorkerCommandMap['startWorkflow'] = {}): P
   await cleanupWorkflow();
   resetRunState();
 
-  const config = getConfig({
+  const overrides = compactConfigOverrides({
     username: payload.username,
     password: payload.password,
     downloadDir: payload.downloadDir,
-    headless: payload.headless ?? true,
+    headless: payload.headless,
+  });
+
+  const config = getConfig({
+    ...overrides,
     courseFilter: undefined,
     includeNonSubjectCourses: true,
   });
+
+  if (!config.username.trim() || !config.password.trim()) {
+    throw new Error('Blackboard credentials are missing. Open Setup and save your username/password.');
+  }
 
   runSummaryContext = {
     startedAt: new Date().toISOString(),
