@@ -133,9 +133,9 @@ async function startWorkflow(payload: WorkerCommandMap['startWorkflow'] = {}): P
   workflow.on('download:complete', () => {
     runState.filesDownloaded += 1;
   });
-  workflow.on('download:error', (data: { filename: string; error: string }) => {
+  workflow.on('download:error', (downloadError: { filename: string; error: string }) => {
     runState.filesFailed += 1;
-    runState.failedFiles.push({ name: data.filename, reason: data.error || 'Unknown error' });
+    runState.failedFiles.push({ name: downloadError.filename, reason: downloadError.error || 'Unknown error' });
   });
   workflow.on('download:skip', () => {
     runState.filesSkipped += 1;

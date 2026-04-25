@@ -254,10 +254,10 @@ function sendWorkerCommand<T extends WorkerCommandType>(
       reject,
     });
 
-    worker!.stdin.write(message + '\n', error => {
-      if (!error) return;
+    worker!.stdin.write(message + '\n', writeError => {
+      if (!writeError) return;
       pendingWorkerRequests.delete(id);
-      reject(new Error(normalizeWorkerError(error.message)));
+      reject(new Error(normalizeWorkerError(writeError.message)));
     });
   });
 }
