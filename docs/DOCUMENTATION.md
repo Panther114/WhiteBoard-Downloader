@@ -3,7 +3,7 @@
 ## Entry points
 
 - `scripts/bootstrap.js`: shared bootstrap logic used by launchers (`npm run bootstrap`)
-- `src/cli.ts`: commands (`setup`, `download`, `doctor`, `config`)
+- `src/cli.ts`: commands (`setup`, `config-check`, `download`, `doctor`, `config`)
 - `src/workflow/downloadWorkflow.ts`: shared download workflow used by TUI and GUI
 - `src/gui/main.ts` + `src/gui/preload.ts` + `src/gui/renderer/`: desktop GUI entry points
 
@@ -11,7 +11,7 @@
 
 1. Launcher checks Node/npm availability.
 2. Launcher runs `npm run bootstrap`.
-3. Launcher runs `node dist/cli.js doctor --config-only`.
+3. Launcher runs `node dist/cli.js config-check --quiet`.
 4. If config check fails, launcher runs `node dist/cli.js setup`.
 5. Launcher runs `node dist/cli.js download`.
 6. GUI launchers run `npm run gui` after the same bootstrap/setup checks.
@@ -34,6 +34,14 @@
 - writable download/log/database directories
 - Blackboard URL reachability (non-config-only mode)
 - optional real login test (`doctor --login`)
+
+## Dedicated launcher config gate
+
+- `node dist/cli.js config-check` validates only setup readiness:
+  - `.env` exists
+  - non-placeholder `BB_USERNAME` and `BB_PASSWORD`
+  - `DOWNLOAD_DIR` present or defaultable to `./downloads`
+- `--quiet` suppresses output and is used by launchers for exit-code-only gating.
 
 ## File type and extension handling
 

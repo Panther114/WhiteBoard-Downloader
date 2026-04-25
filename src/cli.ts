@@ -20,6 +20,7 @@ import {
   evaluateConfigEnv,
   formatDoctorLine,
   getDoctorPaths,
+  isConfigReadyForLaunch,
   isSupportedNodeVersion,
   type DoctorCheck,
 } from './utils/doctor';
@@ -66,6 +67,22 @@ function formatEta(seconds: number): string {
   const hours = Math.floor(rounded / 3600);
   const remainingMinutes = Math.floor((rounded % 3600) / 60);
   return `${hours}h ${String(remainingMinutes).padStart(2, '0')}m`;
+}
+
+function runCommandForStatus(
+  command: string,
+  args: string[] = [],
+): { status: number | null; stdout: string; stderr: string } {
+  const result = spawnSync(command, args, {
+    encoding: 'utf-8',
+    shell: process.platform === 'win32',
+  });
+
+  return {
+    status: result.status,
+    stdout: result.stdout || '',
+    stderr: result.stderr || '',
+  };
 }
 
 program
@@ -185,6 +202,32 @@ program
   });
 
 program
+  .command('config-check')
+  .description('Check whether local setup configuration is ready for launcher startup')
+  .option('--quiet', 'Suppress output and rely only on exit code')
+  .action(options => {
+    try {
+      const result = isConfigReadyForLaunch(path.resolve('.env'));
+      if (!result.ok) {
+        if (!options.quiet) {
+          console.log(chalk.red(`✗ ${result.reason || 'Configuration is invalid'}`));
+        }
+        process.exit(1);
+      }
+
+      if (!options.quiet) {
+        console.log(chalk.green('✓ Configuration is valid'));
+      }
+      process.exit(0);
+    } catch (error) {
+      if (!options.quiet) {
+        handleUserFacingError(error, './logs/whiteboard.log');
+      }
+      process.exit(1);
+    }
+  });
+
+program
   .command('doctor')
   .description('Run environment and configuration checks')
   .option('--login', 'Attempt a real Blackboard login using current config')
@@ -204,7 +247,7 @@ program
         add('fail', `Node.js version unsupported (${process.version}); required >=18 and <24`);
       }
 
-      const npmVersion = spawnSync('npm', ['--version'], { encoding: 'utf-8' });
+      const npmVersion = runCommandForStatus('npm', ['--version']);
       if (npmVersion.status === 0) {
         add('pass', `npm available (${npmVersion.stdout.trim()})`);
       } else {

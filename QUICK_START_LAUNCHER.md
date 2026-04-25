@@ -16,7 +16,7 @@ You now use one launcher file for both first-time setup and later runs.
 
 1. Checks Node/npm
 2. Runs `npm run bootstrap`
-3. Validates config (`doctor --config-only`)
+3. Validates config (`config-check --quiet`)
 4. Runs setup wizard if config is missing/invalid
 5. Starts interactive download flow
 
