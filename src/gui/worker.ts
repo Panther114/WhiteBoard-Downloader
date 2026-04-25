@@ -104,7 +104,6 @@ async function startWorkflow(payload: WorkerCommandMap['startWorkflow'] = {}): P
   const config = getConfig({
     ...overrides,
     courseFilter: undefined,
-    includeNonSubjectCourses: true,
   });
 
   const hasUsername = typeof config.username === 'string' && config.username.trim() !== '';

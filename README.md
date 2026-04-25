@@ -1,4 +1,4 @@
-# WhiteBoard Downloader v0.8.2
+# BlackboardChina Downloader v0.8.2
 
 A Blackboard downloader for students that keeps the interactive checkbox selection flow and adds a one-click setup/start path.
 
@@ -54,6 +54,10 @@ npm start download
 - `npm run gui` – launch desktop GUI (no rebuild)
 - `npm run gui:dev` – GUI development mode
 - `npm run build:gui` – build CLI + GUI bundles
+
+## Legal notice
+
+This application is provided solely for educational purposes. You are fully responsible for ensuring your usage complies with SHSID policy and all applicable rules.
 
 ## Strict document allowlist
 

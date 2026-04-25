@@ -54,7 +54,7 @@ function createWindow(): void {
     height: 820,
     minWidth: 980,
     minHeight: 680,
-    title: `WhiteBoard Downloader v${APP_VERSION}`,
+    title: `BlackboardChina Downloader v${APP_VERSION}`,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -421,7 +421,6 @@ app.whenReady().then(() => {
       username: env.BB_USERNAME || '',
       downloadDir: env.DOWNLOAD_DIR || './downloads',
       headless: env.HEADLESS !== 'false',
-      includeNonSubjectCourses: env.INCLUDE_NON_SUBJECT_COURSES === 'true',
       courseFilter: env.COURSE_FILTER || '',
     };
   });
@@ -434,7 +433,6 @@ app.whenReady().then(() => {
       BB_PASSWORD: String(payload.password || ''),
       DOWNLOAD_DIR: String(payload.downloadDir || './downloads').trim(),
       HEADLESS: String(Boolean(payload.headless)),
-      INCLUDE_NON_SUBJECT_COURSES: String(Boolean(payload.includeNonSubjectCourses)),
       COURSE_FILTER: existing.COURSE_FILTER || '',
     };
 
@@ -466,7 +464,6 @@ app.whenReady().then(() => {
         BB_PASSWORD: '',
         DOWNLOAD_DIR: './downloads',
         HEADLESS: 'true',
-        INCLUDE_NON_SUBJECT_COURSES: 'true',
         COURSE_FILTER: '',
       },
       { reset: true, preserveEmptyPassword: true },

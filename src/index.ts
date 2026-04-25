@@ -58,7 +58,7 @@ export class WhiteboardDownloader extends EventEmitter {
    * Initialize and authenticate
    */
   async initialize(): Promise<void> {
-    log.info('Initializing Whiteboard Downloader...');
+    log.info('Initializing BlackboardChina Downloader...');
 
     await this.auth.launchBrowser();
     await this.auth.login();

@@ -1,12 +1,14 @@
-# WhiteBoard Downloader Features
+# BlackboardChina Downloader Features
 
 ## User workflow and setup
 
 - ✅ One-click setup/start workflow (single launcher flow)
 - ✅ Setup wizard for credentials and preferences
+- ✅ Setup flow simplified (removed non-functional non-subject-course toggle)
 - ✅ Doctor command for diagnostics (`doctor`, `doctor --login`)
 - ✅ Cross-platform launchers (`start.bat`, `start.ps1`, `start.sh`)
 - ✅ Desktop GUI flow (Electron + React) with setup, doctor, course/file selection, progress, summary
+- ✅ Refreshed compact GUI style with sticky compact header on non-home screens
 - ✅ Separate GUI launchers (`start-gui.bat`, `start-gui.ps1`, `start-gui.sh`)
 
 ## Interactive usage

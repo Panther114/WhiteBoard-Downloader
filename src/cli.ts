@@ -92,13 +92,12 @@ program
   .option('--test-login', 'Test Blackboard login immediately after saving setup')
   .action(async options => {
     try {
-      console.log(chalk.bold.cyan('\n🛠️  Whiteboard Downloader — Setup Wizard\n'));
+      console.log(chalk.bold.cyan('\n🛠️  BlackboardChina Downloader — Setup Wizard\n'));
 
       const envPath = path.resolve('.env');
       const existing = options.reset ? {} : readEnvFile(envPath);
       const hasExistingPassword = Boolean(existing.BB_PASSWORD && existing.BB_PASSWORD !== 'your_password');
 
-      const defaultIncludeNonSubject = existing.INCLUDE_NON_SUBJECT_COURSES === 'true';
       const defaultHeadless = existing.HEADLESS !== 'false';
 
       const answers = await inquirer.prompt([
@@ -130,12 +129,6 @@ program
         },
         {
           type: 'confirm',
-          name: 'includeNonSubjectCourses',
-          message: 'Include non-subject / organization courses for advanced CLI filtering?',
-          default: defaultIncludeNonSubject,
-        },
-        {
-          type: 'confirm',
           name: 'headless',
           message: 'Run browser in headless mode by default? (Visible mode helps debugging)',
           default: defaultHeadless,
@@ -154,7 +147,6 @@ program
         BB_PASSWORD: answers.password,
         DOWNLOAD_DIR: answers.downloadDir.trim(),
         COURSE_FILTER: existing.COURSE_FILTER || '',
-        INCLUDE_NON_SUBJECT_COURSES: String(Boolean(answers.includeNonSubjectCourses)),
         HEADLESS: String(Boolean(answers.headless)),
       };
 
@@ -403,7 +395,7 @@ program
     let workflow: DownloadWorkflow | null = null;
 
     try {
-      console.log(chalk.bold.cyan('\n🎓 Whiteboard Downloader v0.8.2\n'));
+      console.log(chalk.bold.cyan('\n🎓 BlackboardChina Downloader v0.8.2\n'));
 
       let username = options.username;
       let password = options.password;
@@ -454,7 +446,6 @@ program
         downloadDir: options.dir,
         headless: options.headless === 'true',
         courseFilter: undefined,
-        includeNonSubjectCourses: true,
       });
 
       report.logFilePath = config.logFile;
@@ -770,7 +761,6 @@ program
         'Database Path': config.databasePath,
         'Log Level': config.logLevel,
         'Log File': config.logFile,
-        'Include Non-Subject Courses': config.includeNonSubjectCourses,
         'Max Retries': config.maxRetries,
         'Retry Delay': `${config.retryDelay}ms`,
       };

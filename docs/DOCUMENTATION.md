@@ -20,7 +20,6 @@
 
 - Credentials: `BB_USERNAME`, `BB_PASSWORD`
 - Download directory: `DOWNLOAD_DIR`
-- Include non-subject courses: `INCLUDE_NON_SUBJECT_COURSES`
 - Browser mode: `HEADLESS`
 - Supports `--reset` and optional login test (`--test-login`)
 
