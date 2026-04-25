@@ -6,7 +6,7 @@ on:
   pull_request:
 
 jobs:
-  build-test:
+  tui-build-test:
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -20,14 +20,31 @@ jobs:
           node-version: '20'
           cache: 'npm'
 
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Install Playwright Chromium
-        run: npx playwright install chromium
+      - name: Install TUI dependencies
+        run: npm ci --omit=optional
 
       - name: Build
         run: npm run build
 
       - name: Test
         run: npm test -- --runInBand
+
+  gui-build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install full dependencies
+        run: npm ci
+
+      - name: Build GUI
+        run: npm run build:gui

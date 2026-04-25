@@ -6,6 +6,8 @@ const { spawnSync } = require('child_process');
 
 const ROOT = process.cwd();
 const DEBUG = process.env.DEBUG_BOOTSTRAP === '1';
+const ELECTRON_INSTALL_HELP =
+  'Electron failed to download. This is usually a network/CDN/VPN issue. Turn on VPN or use a stable network, delete node_modules and rerun start-gui, and optionally set ELECTRON_MIRROR if your environment documents a mirror.';
 
 function info(msg) {
   console.log(`[bootstrap] ${msg}`);
@@ -50,6 +52,70 @@ function getNodeMajor() {
   return Number.isFinite(major) ? major : NaN;
 }
 
+function parseMode() {
+  const arg = process.argv.find(value => value.startsWith('--mode='));
+  if (arg) return arg.slice('--mode='.length);
+  if (process.env.BOOTSTRAP_MODE) return process.env.BOOTSTRAP_MODE;
+  return 'tui';
+}
+
+function binName(name) {
+  return process.platform === 'win32' ? `${name}.cmd` : name;
+}
+
+function localBinExists(name) {
+  return fs.existsSync(path.join(ROOT, 'node_modules', '.bin', binName(name)));
+}
+
+function electronHealthy() {
+  try {
+    const electronPath = require('electron');
+    return typeof electronPath === 'string' && fs.existsSync(electronPath);
+  } catch {
+    return false;
+  }
+}
+
+function dependenciesHealthy(mode) {
+  const nodeModulesPath = path.join(ROOT, 'node_modules');
+  if (!fs.existsSync(nodeModulesPath)) return false;
+
+  const baseBins = ['tsc', 'playwright'];
+  const guiBins = ['vite', 'electron'];
+  const requiredBins = mode === 'gui' ? [...baseBins, ...guiBins] : baseBins;
+
+  if (!requiredBins.every(localBinExists)) {
+    return false;
+  }
+
+  if (mode === 'gui' && !electronHealthy()) {
+    return false;
+  }
+
+  return true;
+}
+
+function installDependencies(mode) {
+  const lockPath = path.join(ROOT, 'package-lock.json');
+  const useCi = fs.existsSync(lockPath);
+  const installArgs = useCi ? ['ci'] : ['install'];
+  if (mode === 'tui') {
+    installArgs.push('--omit=optional');
+  }
+
+  const stepName = `Installing dependencies with npm ${installArgs.join(' ')}...`;
+  const onFailAction =
+    mode === 'gui' ? ELECTRON_INSTALL_HELP : `Run "npm ${installArgs.join(' ')}" manually and fix any installation errors.`;
+
+  run('npm', installArgs, stepName, onFailAction);
+
+  if (!dependenciesHealthy(mode)) {
+    const healthFailAction =
+      mode === 'gui' ? ELECTRON_INSTALL_HELP : 'Dependencies are still incomplete after install. Delete node_modules and rerun bootstrap.';
+    fail('Dependencies are incomplete after install.', healthFailAction);
+  }
+}
+
 function isPlaywrightChromiumInstalled() {
   try {
     const { chromium } = require('playwright');
@@ -60,8 +126,26 @@ function isPlaywrightChromiumInstalled() {
   }
 }
 
+function guiBuildHealthy() {
+  const requiredFiles = [
+    path.join(ROOT, 'dist', 'cli.js'),
+    path.join(ROOT, 'dist', 'gui', 'main.js'),
+    path.join(ROOT, 'dist', 'gui', 'preload.js'),
+    path.join(ROOT, 'dist', 'gui', 'renderer', 'index.html'),
+  ];
+  return requiredFiles.every(filePath => fs.existsSync(filePath));
+}
+
 (function main() {
-  info('Starting setup checks...');
+  const mode = parseMode();
+  if (!['tui', 'gui'].includes(mode)) {
+    fail(
+      `Unsupported bootstrap mode "${mode}".`,
+      'Use --mode=tui or --mode=gui (or set BOOTSTRAP_MODE to tui/gui).',
+    );
+  }
+
+  info(`Starting setup checks (${mode.toUpperCase()} mode)...`);
 
   if (!commandExists('node')) {
     fail('Node.js is missing.', 'Install Node.js 20.x or 22.x LTS from https://nodejs.org/ then run start again.');
@@ -90,24 +174,26 @@ function isPlaywrightChromiumInstalled() {
 
   const nodeModulesPath = path.join(ROOT, 'node_modules');
   const hasNodeModules = fs.existsSync(nodeModulesPath);
+  const healthy = dependenciesHealthy(mode);
+
   if (!hasNodeModules) {
-    const lockPath = path.join(ROOT, 'package-lock.json');
-    if (fs.existsSync(lockPath)) {
-      run('npm', ['ci'], 'Installing dependencies with npm ci...', 'Run "npm ci" manually and fix any installation errors.');
-    } else {
-      run(
-        'npm',
-        ['install'],
-        'Installing dependencies with npm install...',
-        'Run "npm install" manually and fix any installation errors.',
-      );
-    }
+    installDependencies(mode);
+  } else if (!healthy) {
+    info('Dependencies appear incomplete. Reinstalling...');
+    fs.rmSync(nodeModulesPath, { recursive: true, force: true });
+    installDependencies(mode);
   } else {
     info('Dependencies already installed.');
   }
 
   const distCliPath = path.join(ROOT, 'dist', 'cli.js');
-  if (!fs.existsSync(distCliPath)) {
+  if (mode === 'gui') {
+    if (!guiBuildHealthy()) {
+      run('npm', ['run', 'build:gui'], 'Building CLI + GUI...', 'Run "npm run build:gui" manually and fix the build errors.');
+    } else {
+      info('GUI build output already present.');
+    }
+  } else if (!fs.existsSync(distCliPath)) {
     run('npm', ['run', 'build'], 'Building project...', 'Run "npm run build" manually and fix the build errors.');
   } else {
     info('Build output already present.');

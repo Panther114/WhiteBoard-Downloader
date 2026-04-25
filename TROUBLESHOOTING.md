@@ -30,6 +30,20 @@ npm install
 
 Then run launcher again.
 
+If a previous install failed part-way, just rerun the launcher. Bootstrap now detects incomplete `node_modules` and reinstalls automatically.
+
+## GUI/Electron install failed (ECONNRESET / network reset)
+
+**Symptom:** `start-gui` fails during Electron postinstall with errors like `RequestError: read ECONNRESET`.
+
+**Why:** Electron binary download is network/CDN-sensitive.
+
+**Fix:**
+1. Enable VPN or switch to a more stable network.
+2. Delete `node_modules` (if present) and rerun `start-gui`.
+3. Optionally set `ELECTRON_MIRROR` if your environment documents a reachable mirror.
+4. Use TUI launcher (`start.bat` / `start.ps1` / `start.sh`) as a lighter fallback path.
+
 ## First run feels slow
 
 **Symptom:** first launch takes noticeably longer.
@@ -37,6 +51,8 @@ Then run launcher again.
 **Why:** dependencies, TypeScript build output, and Playwright Chromium may need to install.
 
 **Fix:** wait for first run to finish; later runs are faster.
+
+TUI mode is lighter because GUI/Electron dependencies are skipped unless you use `start-gui`.
 
 ## Playwright install failed
 

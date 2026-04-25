@@ -25,8 +25,8 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
-echo [INFO] Running bootstrap...
-call npm run bootstrap
+echo [INFO] Running GUI bootstrap...
+call npm run bootstrap:gui
 if %errorlevel% neq 0 (
     echo.
     echo [ERROR] Bootstrap failed. Please follow the on-screen next step.
@@ -57,4 +57,3 @@ if %errorlevel% neq 0 (
 )
 
 endlocal
-
