@@ -20,7 +20,7 @@ import {
   WorkerOutgoingMessage,
 } from './workerProtocol';
 
-const APP_VERSION = '0.8.2';
+const APP_VERSION = '0.8.3';
 const WORKER_NATIVE_MODULE_ERROR =
   'GUI worker failed to start because a native dependency could not load. Try deleting node_modules and rerunning start-gui.bat.';
 

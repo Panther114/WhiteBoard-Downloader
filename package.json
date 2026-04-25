@@ -1,6 +1,6 @@
 {
   "name": "whiteboard-downloader",
-  "version": "0.8.2",
+  "version": "0.8.3",
   "description": "Modern, async-first automation tool to download course materials from SHSID Blackboard China",
   "main": "dist/index.js",
   "bin": {
