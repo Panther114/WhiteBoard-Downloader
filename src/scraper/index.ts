@@ -198,8 +198,8 @@ export class BlackboardScraper {
     log.debug(`Current page URL: ${this.page.url()}`);
 
     // Primary selector; try a broader fallback if it times out.
-    const PRIMARY_SELECTOR = 'ul.portletList-img.courseListing.coursefakeclass li a';
-    const FALLBACK_SELECTOR = 'ul.courseListing li a';
+    const PRIMARY_SELECTOR = 'ul.portletList-img.courseListing.coursefakeclass > li > a';
+    const FALLBACK_SELECTOR = 'ul.courseListing > li > a';
 
     type RawCourse = { href: string; text: string };
     let rawCourses: RawCourse[] = [];

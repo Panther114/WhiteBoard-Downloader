@@ -42,12 +42,12 @@ export function App() {
   const [version, setVersion] = useState('');
   const [status, setStatus] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
+  const [isScanningCourses, setIsScanningCourses] = useState(false);
   const [config, setConfig] = useState({
     username: '',
     password: '',
     downloadDir: './downloads',
     headless: true,
-    includeNonSubjectCourses: true,
   });
   const [paths, setPaths] = useState({ downloads: '', logs: '', summary: '' });
   const [doctorRows, setDoctorRows] = useState<DoctorRow[]>([]);
@@ -69,7 +69,6 @@ export function App() {
     speed: 0,
     currentFile: '',
   });
-  const [knownByUrl, setKnownByUrl] = useState<Map<string, number>>(new Map());
   const [perUrlDownloaded, setPerUrlDownloaded] = useState<Map<string, number>>(new Map());
   const [speedWindow, setSpeedWindow] = useState({ lastTs: Date.now(), bytes: 0 });
 
@@ -82,7 +81,6 @@ export function App() {
         username: String(cfg.username || ''),
         downloadDir: String(cfg.downloadDir || './downloads'),
         headless: Boolean(cfg.headless ?? true),
-        includeNonSubjectCourses: Boolean(cfg.includeNonSubjectCourses ?? true),
       }));
       setPaths(await window.whiteboardGui.getPaths());
     })();
@@ -160,6 +158,7 @@ export function App() {
 
   const selectedCourses = courses.filter(c => selectedCourseIds.has(c.id));
   const selectedFiles = files.filter(f => selectedFileUrls.has(f.url));
+  const compactHeader = stage !== 'welcome';
   const progressPercent =
     downloadState.totalKnownBytes > 0
       ? Math.min(100, (downloadState.downloadedBytes / downloadState.totalKnownBytes) * 100)
@@ -208,31 +207,35 @@ export function App() {
   }
 
   async function runScanFiles() {
+    setIsScanningCourses(true);
     await runWithUiError(async () => {
-      setStatus('Scanning selected courses for files...');
-      const result = (await window.whiteboardGui.discoverFiles(selectedCourses)) as {
-        files: DiscoveredFile[];
-        skippedOnDisk: number;
-      };
-      setFiles(result.files);
-      setSelectedFileUrls(new Set(result.files.map(f => f.url)));
-      const known = new Map<string, number>();
-      for (const f of result.files) if (typeof f.size === 'number') known.set(f.url, f.size);
-      setKnownByUrl(known);
-      const totalKnownBytes = Array.from(known.values()).reduce((a, b) => a + b, 0);
-      setDownloadState({
-        completed: 0,
-        failed: 0,
-        skipped: result.skippedOnDisk || 0,
-        downloadedBytes: 0,
-        totalKnownBytes,
-        unknownCount: result.files.length - known.size,
-        speed: 0,
-        currentFile: '',
-      });
-      setPerUrlDownloaded(new Map());
-      setStage('files');
-      setStatus('');
+      try {
+        setStatus('Scanning selected courses for files...');
+        const result = (await window.whiteboardGui.discoverFiles(selectedCourses)) as {
+          files: DiscoveredFile[];
+          skippedOnDisk: number;
+        };
+        setFiles(result.files);
+        setSelectedFileUrls(new Set(result.files.map(f => f.url)));
+        const known = new Map<string, number>();
+        for (const f of result.files) if (typeof f.size === 'number') known.set(f.url, f.size);
+        const totalKnownBytes = Array.from(known.values()).reduce((a, b) => a + b, 0);
+        setDownloadState({
+          completed: 0,
+          failed: 0,
+          skipped: result.skippedOnDisk || 0,
+          downloadedBytes: 0,
+          totalKnownBytes,
+          unknownCount: result.files.length - known.size,
+          speed: 0,
+          currentFile: '',
+        });
+        setPerUrlDownloaded(new Map());
+        setStage('files');
+        setStatus('');
+      } finally {
+        setIsScanningCourses(false);
+      }
     });
   }
 
@@ -276,27 +279,39 @@ export function App() {
 
   return (
     <div className="app">
-      <header className="hero">
-        <h1>WhiteBoard Downloader</h1>
-        <div>Version {version}</div>
+      <header className={`hero ${compactHeader ? 'hero-compact' : ''}`}>
+        <div className="hero-main">
+          <h1>BlackboardChina Downloader</h1>
+          <p className="hero-disclaimer">
+            This application is provided solely for educational purposes. By using it, you accept full
+            responsibility for compliance with SHSID policies and all related consequences.
+          </p>
+          <div className="hero-version">Version {version}</div>
+        </div>
       </header>
+
       {status && <div className="status">{status}</div>}
-      {errorMessage && <div className="status" style={{ borderLeftColor: '#d9534f' }}>{errorMessage}</div>}
+      {errorMessage && (
+        <div className="status status-error">
+          {errorMessage}
+        </div>
+      )}
 
       {stage === 'welcome' && (
         <section className="card">
           <p>Download Blackboard course files with full course and file selection.</p>
-          <div className="row">
+          <div className="row compact-row">
             <button onClick={startFlow}>Start</button>
             <button onClick={() => setStage('setup')}>Setup / Change Credentials</button>
             <button onClick={() => setStage('doctor')}>Doctor / Check Environment</button>
           </div>
-          <div className="row">
+          <div className="row compact-row">
             <button onClick={openDownloads}>Open Downloads Folder</button>
             <button onClick={openLogs}>Open Logs Folder</button>
           </div>
           <small>Downloads: {paths.downloads}</small>
           <small>Logs: {paths.logs}</small>
+          <small className="home-footer">Licensed under MIT • Created by Panther114</small>
         </section>
       )}
 
@@ -332,15 +347,7 @@ export function App() {
               <option value="visible">Visible</option>
             </select>
           </label>
-          <label className="inline">
-            <input
-              type="checkbox"
-              checked={config.includeNonSubjectCourses}
-              onChange={e => setConfig({ ...config, includeNonSubjectCourses: e.target.checked })}
-            />
-            Include organization/non-subject courses in advanced CLI filtering
-          </label>
-          <div className="row">
+          <div className="row compact-row">
             <button onClick={() => saveSetup(false)}>Save</button>
             <button onClick={() => saveSetup(true)}>Save and Test Login</button>
             <button onClick={resetSetup}>Reset Setup</button>
@@ -352,12 +359,12 @@ export function App() {
       {stage === 'doctor' && (
         <section className="card">
           <h2>Doctor</h2>
-          <div className="row">
+          <div className="row compact-row">
             <button onClick={() => runDoctor(false)}>Run Checks</button>
             <button onClick={() => runDoctor(true)}>Run Checks + Login Test</button>
             <button onClick={() => setStage('welcome')}>Back</button>
           </div>
-          <ul className="doctor-list">
+          <ul className="doctor-list compact-list">
             {doctorRows.map((r, i) => (
               <li key={`${r.message}-${i}`} className={`doctor-${r.status}`}>
                 <strong>{r.status.toUpperCase()}</strong> {r.message}
@@ -376,20 +383,23 @@ export function App() {
             value={courseSearch}
             onChange={e => setCourseSearch(e.target.value)}
           />
-          <div className="row">
-            <button onClick={() => setSelectedCourseIds(new Set(courses.map(c => c.id)))}>Select all</button>
-            <button onClick={() => setSelectedCourseIds(new Set())}>Clear all</button>
-            <button disabled={selectedCourses.length === 0} onClick={runScanFiles}>
-              Scan selected courses
+          <div className="row compact-row">
+            <button disabled={isScanningCourses} onClick={() => setSelectedCourseIds(new Set(courses.map(c => c.id)))}>
+              Select all
             </button>
-            <button onClick={() => setStage('welcome')}>Back</button>
+            <button disabled={isScanningCourses} onClick={() => setSelectedCourseIds(new Set())}>Clear all</button>
+            <button disabled={selectedCourses.length === 0 || isScanningCourses} onClick={runScanFiles}>
+              {isScanningCourses ? 'Scanning...' : 'Scan selected courses'}
+            </button>
+            <button disabled={isScanningCourses} onClick={() => setStage('welcome')}>Back</button>
           </div>
-          <div className="list">
+          <div className={`list compact-list ${isScanningCourses ? 'is-disabled' : ''}`}>
             {visibleCourses.map(course => (
-              <label key={course.id} className="item">
+              <label key={course.id} className="item compact-item">
                 <input
                   type="checkbox"
                   checked={selectedCourseIds.has(course.id)}
+                  disabled={isScanningCourses}
                   onChange={e => {
                     const next = new Set(selectedCourseIds);
                     if (e.target.checked) next.add(course.id);
@@ -400,6 +410,12 @@ export function App() {
                 {course.name}
               </label>
             ))}
+            {isScanningCourses && (
+              <div className="list-overlay" aria-live="polite">
+                <span className="spinner" />
+                <span>Scanning selected courses...</span>
+              </div>
+            )}
           </div>
         </section>
       )}
@@ -408,7 +424,7 @@ export function App() {
         <section className="card">
           <h2>File Selection</h2>
           <div>Discovered: {files.length} | Selected: {selectedFileUrls.size}</div>
-          <div className="row">
+          <div className="row compact-row">
             <input placeholder="Search files" value={fileSearch} onChange={e => setFileSearch(e.target.value)} />
             <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)}>
               <option value="all">All file types</option>
@@ -419,7 +435,7 @@ export function App() {
               ))}
             </select>
           </div>
-          <div className="row">
+          <div className="row compact-row">
             <button onClick={() => setSelectedFileUrls(new Set(files.map(f => f.url)))}>Select all</button>
             <button onClick={() => setSelectedFileUrls(new Set())}>Clear all</button>
             <button disabled={selectedFiles.length === 0} onClick={startDownload}>
@@ -487,7 +503,7 @@ export function App() {
               : '?'}
           </div>
           <div>Current file: {downloadState.currentFile || '...'}</div>
-          <div className="row">
+          <div className="row compact-row">
             <button onClick={openDownloads}>Open downloads folder</button>
             <button onClick={openLogs}>Open logs folder</button>
           </div>
@@ -513,7 +529,7 @@ export function App() {
           )}
           <small>Latest summary: {paths.summary}</small>
           <small>Downloads: {paths.downloads}</small>
-          <div className="row">
+          <div className="row compact-row">
             <button onClick={startFlow}>Run again</button>
             <button onClick={openDownloads}>Open downloads</button>
             <button onClick={openLogs}>Open logs</button>
