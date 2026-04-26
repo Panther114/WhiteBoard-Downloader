@@ -1,6 +1,8 @@
 # BlackboardChina Downloader v0.8.3
 
-A Blackboard downloader for students that keeps the interactive checkbox selection flow and adds a one-click setup/start path.
+This application is provided solely for educational, personal, and technical purposes. By using this application, you acknowledge and agree that you are solely responsible for ensuring that your use complies with all applicable SHSID policies, platform terms, laws, and regulations.
+
+The developer does not endorse, encourage, or authorize any misuse of this application, including any use that violates school policies, platform rules, or legal requirements. To the maximum extent permitted by applicable law, the developer disclaims all responsibility and liability for any misuse of the application, any violation committed by users, and any direct or indirect consequences resulting from such use.
 
 ## Normal user path (GitHub Releases ZIP)
 
@@ -9,10 +11,9 @@ Requires Node.js **20.x or 22.x LTS** installed manually (`24.x` is not supporte
 1. Download the ZIP from **GitHub Releases**.
 2. Unzip it.
 3. Double-click one launcher in the project folder:
-   - `start.bat` (Windows)
-   - `start.ps1` (Windows PowerShell)
-   - `start.sh` (macOS/Linux)
-   - Optional GUI launchers: `start-gui.bat` / `start-gui.ps1` / `start-gui.sh`
+   - `start-gui.bat` (Windows)
+   - `start-guui.sh` (macOS/Linux)
+   - Optional TUI launchers: `start.bat` / `start.sh`
 4. The launcher now automatically:
    - checks Node/npm compatibility,
    - installs dependencies (TUI launchers use lightweight bootstrap without GUI/Electron packages),
@@ -21,11 +22,10 @@ Requires Node.js **20.x or 22.x LTS** installed manually (`24.x` is not supporte
    - runs setup if config is missing/invalid,
    - launches download.
    - (first run may take longer while dependencies/build/Playwright install complete)
-   - if install is interrupted, rerunning launcher now repairs incomplete `node_modules`
+   - if install is interrupted, rerunning launcher repairs incomplete `node_modules`
 5. Enter Blackboard credentials once in setup.
-6. Select courses/files in the existing interactive checkbox prompts.
-   - In GUI mode, use full course/file selection screens.
-7. On future runs, click the same launcher again.
+6. Select courses/files in TUI/GUI checkboxes.
+7. On future runs, double-click the same launcher again.
 
 See [README-USER.md](README-USER.md) for short student instructions.
 
@@ -54,10 +54,6 @@ npm start download
 - `npm run gui` – launch desktop GUI (no rebuild)
 - `npm run gui:dev` – GUI development mode
 - `npm run build:gui` – build CLI + GUI bundles
-
-## Legal notice
-
-This application is provided solely for educational purposes. You are fully responsible for ensuring your usage complies with SHSID policy and all applicable rules.
 
 ## Strict document allowlist
 
