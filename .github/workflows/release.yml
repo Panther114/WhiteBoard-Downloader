@@ -1,0 +1,44 @@
+name: Release Windows installer
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  package-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci --include=optional
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build:app -- --publish never
+        env:
+          CSC_LINK: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
+          CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+      - name: Create checksums
+        shell: pwsh
+        run: Get-ChildItem release -File | Get-FileHash -Algorithm SHA256 | ForEach-Object { "{0}  {1}" -f $_.Hash.ToLower(), $_.Path.Substring((Get-Location).Path.Length + 1) } | Set-Content release/SHA256SUMS.txt
+      - name: Create SBOM
+        shell: pwsh
+        run: npm ls --all --json --omit=dev | Set-Content release/sbom-npm.json
+      - uses: softprops/action-gh-release@v2
+        with:
+          draft: false
+          generate_release_notes: true
+          files: |
+            release/*.exe
+            release/*.yml
+            release/*.blockmap
+            release/SHA256SUMS.txt
+            release/sbom-npm.json
+          fail_on_unmatched_files: true

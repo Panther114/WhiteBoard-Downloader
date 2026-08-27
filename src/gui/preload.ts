@@ -24,6 +24,13 @@ const api = {
     ipcRenderer.invoke('paths:get'),
   openDownloads: (): Promise<string> => ipcRenderer.invoke('path:open-downloads'),
   openLogs: (): Promise<string> => ipcRenderer.invoke('path:open-logs'),
+  getAgentStatus: (): Promise<Record<string, unknown>> => ipcRenderer.invoke('agent:status'),
+  syncAgent: (payload?: Record<string, unknown>): Promise<Record<string, unknown>> =>
+    ipcRenderer.invoke('agent:sync', payload || {}),
+  getUpdateState: (): Promise<Record<string, unknown>> => ipcRenderer.invoke('update:get-state'),
+  checkForUpdates: (): Promise<Record<string, unknown>> => ipcRenderer.invoke('update:check'),
+  downloadUpdate: (): Promise<Record<string, unknown>> => ipcRenderer.invoke('update:download'),
+  installUpdate: (): Promise<{ ok: boolean }> => ipcRenderer.invoke('update:install'),
   onWorkflowEvent: (handler: (event: WorkflowEvent) => void): (() => void) => {
     const listener = (_: unknown, evt: WorkflowEvent) => handler(evt);
     ipcRenderer.on('workflow:event', listener);

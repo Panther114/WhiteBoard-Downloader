@@ -2,7 +2,7 @@
 
 ## First run
 
-Before starting, install Node.js **20.x or 22.x LTS** manually (`24.x` is not supported).
+Before starting, install Node.js **22.x or 24.x** manually.
 
 1. Download the project ZIP from GitHub Releases.
 2. Unzip it.

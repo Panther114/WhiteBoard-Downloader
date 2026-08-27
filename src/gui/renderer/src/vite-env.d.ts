@@ -30,6 +30,12 @@ declare global {
       getPaths: () => Promise<{ downloads: string; logs: string; summary: string }>;
       openDownloads: () => Promise<string>;
       openLogs: () => Promise<string>;
+      getAgentStatus: () => Promise<Record<string, unknown>>;
+      syncAgent: (payload?: Record<string, unknown>) => Promise<Record<string, unknown>>;
+      getUpdateState: () => Promise<Record<string, unknown>>;
+      checkForUpdates: () => Promise<Record<string, unknown>>;
+      downloadUpdate: () => Promise<Record<string, unknown>>;
+      installUpdate: () => Promise<{ ok: boolean }>;
       onWorkflowEvent: (handler: (event: { type: string; payload: unknown }) => void) => () => void;
     };
   }

@@ -1,13 +1,14 @@
 import path from 'path';
 import { EventEmitter } from 'events';
-import { Config, Course, DiscoveredFile, DownloadableFile, FileTree } from './types';
+import { AgentAttachment, Config, ContentItem, Course, DiscoveredFile, DownloadableFile, FileTree } from './types';
 import { BlackboardAuth } from './auth';
 import { BlackboardScraper } from './scraper';
 import { FileDownloader } from './downloader';
 import { DownloadDatabase } from './database';
 import { initLogger, log } from './utils/logger';
-import { ensureDirectory } from './utils/helpers';
+import { ensureDirectory, sanitizeFilename } from './utils/helpers';
 import { loadFileTree, saveFileTree, buildFileTreeFromDisk } from './fileTree';
+import { stableId } from './agent/markdown';
 
 /** Maximum folder-nesting depth before recursion is aborted. */
 const MAX_DISCOVER_DEPTH = 10;
@@ -163,6 +164,83 @@ export class WhiteboardDownloader extends EventEmitter {
 
     log.info(`Discovery complete — found ${allFiles.length} files total`);
     return allFiles;
+  }
+
+  /** Read-only content and attachment discovery used by agent mode. */
+  async discoverAgentContent(
+    courses: Course[],
+    includeInstructions = true,
+  ): Promise<{ items: ContentItem[]; files: DiscoveredFile[]; attachments: AgentAttachment[]; warnings: string[] }> {
+    if (!this.scraper) throw new Error('Not initialized. Call initialize() first.');
+    const items: ContentItem[] = [];
+    const files: DiscoveredFile[] = [];
+    const warnings: string[] = [];
+
+    for (const course of courses) {
+      try {
+        const links = await this.scraper.getSidebarLinks(course.url, { includeAnnouncements: true });
+        for (const link of links) {
+          if (!(await this.scraper.navigateTo(link.url))) {
+            warnings.push(`Could not open ${course.name} / ${link.title}`);
+            continue;
+          }
+          const found = await this.discoverAgentFolder(course, link.title, [], includeInstructions, 0);
+          items.push(...found.items);
+          files.push(...found.files);
+        }
+        await this.scraper.returnToHome();
+      } catch (error) {
+        warnings.push(`Could not scan ${course.name}: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+
+    const attachments: AgentAttachment[] = files.map(file => ({
+      id: stableId('attachment', file.url),
+      name: file.name,
+      url: file.url,
+      courseName: file.courseName,
+      sectionName: file.sectionName,
+      localPath: path.join(file.savePath, file.name),
+      relativePath: path.relative(this.config.downloadDir, path.join(file.savePath, file.name)),
+      size: file.size,
+      mimeType: file.mimeType,
+      status: 'pending',
+    }));
+    return { items, files, attachments, warnings };
+  }
+
+  private async discoverAgentFolder(
+    course: Course,
+    sectionName: string,
+    folderPath: string[],
+    includeInstructions: boolean,
+    depth: number,
+  ): Promise<{ items: ContentItem[]; files: DiscoveredFile[] }> {
+    if (!this.scraper || depth >= MAX_DISCOVER_DEPTH) return { items: [], files: [] };
+    const currentPath = path.join(this.config.downloadDir, course.path, sanitizeFilename(sectionName), ...folderPath.map(sanitizeFilename));
+    ensureDirectory(currentPath);
+    const items = includeInstructions ? await this.scraper.getContentItems(course, sectionName, folderPath) : [];
+    const rawFiles = await this.scraper.getDownloadableFiles(currentPath);
+    const files: DiscoveredFile[] = rawFiles.map(file => ({
+      name: file.name,
+      url: file.url,
+      courseName: course.name,
+      sectionName,
+      savePath: currentPath,
+      size: file.size,
+      mimeType: file.mimeType,
+      fileType: path.extname(file.name).slice(1).toUpperCase() || undefined,
+      status: 'pending' as const,
+    }));
+    const folders = await this.scraper.getSubfolders(currentPath);
+    for (const folder of folders) {
+      if (!(await this.scraper.navigateTo(folder.url))) continue;
+      const nested = await this.discoverAgentFolder(course, sectionName, [...folderPath, folder.name], includeInstructions, depth + 1);
+      items.push(...nested.items);
+      files.push(...nested.files);
+      await this.scraper.goBack();
+    }
+    return { items, files };
   }
 
   /**

@@ -80,7 +80,7 @@ function dependenciesHealthy(mode) {
   const nodeModulesPath = path.join(ROOT, 'node_modules');
   if (!fs.existsSync(nodeModulesPath)) return false;
 
-  const baseBins = ['tsc', 'playwright'];
+  const baseBins = ['tsc', 'playwright-core'];
   const guiBins = ['vite', 'electron'];
   const requiredBins = mode === 'gui' ? [...baseBins, ...guiBins] : baseBins;
 
@@ -118,12 +118,20 @@ function installDependencies(mode) {
 
 function isPlaywrightChromiumInstalled() {
   try {
-    const { chromium } = require('playwright');
+    const { chromium } = require('playwright-core');
     const executable = chromium.executablePath();
     return Boolean(executable && fs.existsSync(executable));
   } catch {
     return false;
   }
+}
+
+function systemEdgeAvailable() {
+  if (process.platform !== 'win32') return false;
+  return [
+    path.join(process.env.ProgramFiles || 'C:\\Program Files', 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
+    path.join(process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)', 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
+  ].some(fs.existsSync);
 }
 
 function guiBuildHealthy() {
@@ -149,21 +157,21 @@ function guiBuildHealthy() {
   info(`Starting setup checks (${mode.toUpperCase()} mode)...`);
 
   if (!commandExists('node')) {
-    fail('Node.js is missing.', 'Install Node.js 20.x or 22.x LTS from https://nodejs.org/ then run start again.');
+    fail('Node.js is missing.', 'Install Node.js 22.x or 24.x from https://nodejs.org/ then run start again.');
   }
 
   const nodeMajor = getNodeMajor();
-  if (!Number.isFinite(nodeMajor) || nodeMajor < 18) {
+  if (!Number.isFinite(nodeMajor) || nodeMajor < 22) {
     fail(
       `Unsupported Node.js version v${process.versions.node}.`,
-      'Install Node.js 20.x or 22.x LTS, then run start again.',
+      'Install Node.js 22.x or 24.x, then run start again.',
     );
   }
 
-  if (nodeMajor >= 24) {
+  if (nodeMajor >= 25) {
     fail(
       `Node.js v${process.versions.node} is too new for this project.`,
-      'Install Node.js 20.x or 22.x LTS, then run start again.',
+      'Install Node.js 22.x or 24.x, then run start again.',
     );
   }
 
@@ -200,15 +208,15 @@ function guiBuildHealthy() {
     info('Build output already present.');
   }
 
-  if (!isPlaywrightChromiumInstalled()) {
+  if (!systemEdgeAvailable() && !isPlaywrightChromiumInstalled()) {
     run(
       'npx',
-      ['playwright', 'install', 'chromium'],
+      ['playwright-core', 'install', 'chromium'],
       'Installing Playwright Chromium...',
-      'Run "npx playwright install chromium" manually, then run start again.',
+      'Install Microsoft Edge, or run "npx playwright-core install chromium" manually, then run start again.',
     );
   } else {
-    info('Playwright Chromium already installed.');
+    info('Automation browser already available.');
   }
 
   info('Bootstrap complete.');

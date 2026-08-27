@@ -161,7 +161,7 @@ export function parseContentDisposition(header: string): string | null {
  * @param label  Short label used in the filename (e.g. "getDownloadableFiles")
  */
 export async function dumpPageStructure(
-  page: import('playwright').Page,
+  page: import('playwright-core').Page,
   label: string,
 ): Promise<void> {
   try {

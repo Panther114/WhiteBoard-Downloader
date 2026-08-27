@@ -1,5 +1,7 @@
 # Dependencies
 node_modules/
+release*/
+.node_modules-recovery-*/
 yarn.lock
 pnpm-lock.yaml
 

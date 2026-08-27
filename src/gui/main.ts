@@ -1,17 +1,14 @@
 import path from 'path';
 import fs from 'fs';
-import { ChildProcessWithoutNullStreams, spawn, spawnSync } from 'child_process';
-import { app, BrowserWindow, ipcMain, shell } from 'electron';
+import { ChildProcessWithoutNullStreams, spawn } from 'child_process';
+import { app, BrowserWindow, ipcMain, shell, IpcMainInvokeEvent } from 'electron';
 import { compactConfigOverrides, getConfig } from '../config';
 import { BlackboardAuth } from '../auth';
-import { readEnvFile, writeEnvFile, hasValidCredentials } from '../utils/envFile';
 import {
-  checkPlaywrightChromiumInstalled,
+  checkAutomationBrowserAvailable,
   checkUrlReachable,
   checkWritableDir,
-  evaluateConfigEnv,
   type DoctorCheck,
-  isSupportedNodeVersion,
 } from '../utils/doctor';
 import {
   WorkerCommandMap,
@@ -19,10 +16,13 @@ import {
   WorkerResponseMap,
   WorkerOutgoingMessage,
 } from './workerProtocol';
+import { ensureAppPaths, getAppPaths } from '../appPaths';
+import { SecureDesktopStore } from './secureStore';
+import { checkForUpdates, downloadUpdate, getUpdateState, initializeUpdater, installUpdate } from './updater';
+import { AgentService } from '../agent/service';
 
-const APP_VERSION = '0.8.3';
 const WORKER_NATIVE_MODULE_ERROR =
-  'GUI worker failed to start because a native dependency could not load. Try deleting node_modules and rerunning start-gui.bat.';
+  'GUI worker failed to start because a packaged native dependency could not load. Reinstall the application and run Diagnostics.';
 
 let mainWindow: BrowserWindow | null = null;
 let worker: ChildProcessWithoutNullStreams | null = null;
@@ -32,6 +32,21 @@ let workerReadyResolve: (() => void) | null = null;
 let workerReadyReject: ((error: Error) => void) | null = null;
 let workerBootstrapError = '';
 let requestCounter = 0;
+let desktopStore: SecureDesktopStore;
+const agentService = new AgentService();
+
+function startPackagedMcpServer(): void {
+  const serverPath = path.resolve(__dirname, '..', 'mcp', 'server.js');
+  const child = spawn(process.execPath, [serverPath], {
+    stdio: 'inherit',
+    env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
+  });
+  child.once('error', error => {
+    console.error('Failed to start the MCP server:', error);
+    app.exit(1);
+  });
+  child.once('exit', code => app.exit(code || 0));
+}
 
 const pendingWorkerRequests = new Map<
   string,
@@ -40,6 +55,23 @@ const pendingWorkerRequests = new Map<
 
 function isDevGui(): boolean {
   return process.argv.includes('--dev');
+}
+
+function appVersion(): string { return app.getVersion(); }
+
+function appIconPath(): string {
+  const candidates = [
+    path.resolve(__dirname, '../../assets/app-icon.ico'),
+    path.resolve(__dirname, '../../build/icon.ico'),
+    path.resolve(__dirname, 'renderer/app-icon.ico'),
+  ];
+  return candidates.find(candidate => fs.existsSync(candidate)) || candidates[0];
+}
+
+function assertTrustedSender(event: IpcMainInvokeEvent): void {
+  const url = event.senderFrame?.url || '';
+  const allowed = isDevGui() ? url.startsWith('http://127.0.0.1:5173') : url.startsWith('file:');
+  if (!allowed) throw new Error('Blocked IPC request from an untrusted renderer.');
 }
 
 function sendWorkflowEvent(type: string, payload: unknown): void {
@@ -54,11 +86,14 @@ function createWindow(): void {
     height: 820,
     minWidth: 980,
     minHeight: 680,
-    title: `BlackboardChina Downloader v${APP_VERSION}`,
+    title: `BlackboardChina Downloader v${appVersion()}`,
+    icon: appIconPath(),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
+      sandbox: true,
+      webSecurity: true,
     },
   });
 
@@ -67,22 +102,8 @@ function createWindow(): void {
   } else {
     mainWindow.loadFile(path.resolve(__dirname, 'renderer/index.html'));
   }
-}
-
-function runCommandForStatus(
-  command: string,
-  args: string[] = [],
-): { status: number | null; stdout: string; stderr: string } {
-  const result = spawnSync(command, args, {
-    encoding: 'utf-8',
-    shell: process.platform === 'win32',
-  });
-
-  return {
-    status: result.status,
-    stdout: result.stdout || '',
-    stderr: result.stderr || '',
-  };
+  mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  mainWindow.webContents.on('will-navigate', event => event.preventDefault());
 }
 
 function isNativeModuleAbiError(message: string): boolean {
@@ -109,23 +130,10 @@ function failPendingWorkerRequests(error: Error): void {
   pendingWorkerRequests.clear();
 }
 
-function resolveNodePathFromSystemPath(): string {
-  const lookupCommand = process.platform === 'win32' ? 'where' : 'which';
-  const result = runCommandForStatus(lookupCommand, ['node']);
-  if (result.status === 0) {
-    const firstPath = result.stdout
-      .split(/\r?\n/)
-      .map(line => line.trim())
-      .find(Boolean);
-    if (firstPath) return firstPath;
-  }
-  return 'node';
-}
-
 function getWorkerEnv(): NodeJS.ProcessEnv {
   return {
     ...process.env,
-    ...readEnvFile(path.resolve('.env')),
+    ELECTRON_RUN_AS_NODE: '1',
   };
 }
 
@@ -186,9 +194,8 @@ function spawnGuiWorker(): Promise<void> {
     throw new Error(`GUI worker build output missing (${workerPath})`);
   }
 
-  const nodePath = resolveNodePathFromSystemPath();
-  worker = spawn(nodePath, [workerPath], {
-    cwd: process.cwd(),
+  worker = spawn(process.execPath, [workerPath], {
+    cwd: getAppPaths().root,
     env: getWorkerEnv(),
     stdio: ['pipe', 'pipe', 'pipe'],
   });
@@ -303,53 +310,29 @@ async function runDoctor(loginTest: boolean): Promise<DoctorCheck[]> {
   const add = (status: DoctorCheck['status'], message: string, required = true) =>
     checks.push({ status, message, required });
 
-  const nodeVersionResult = runCommandForStatus('node', ['--version']);
-  const nodeVersion = nodeVersionResult.stdout.trim();
-  if (nodeVersionResult.status === 0 && isSupportedNodeVersion(nodeVersion)) {
-    add('pass', `System Node.js version supported (${nodeVersion})`);
-  } else if (nodeVersionResult.status === 0) {
-    add('fail', `System Node.js version unsupported (${nodeVersion}); required >=18 and <24`);
-  } else {
-    add('fail', 'System Node.js is not available in PATH');
-  }
-
-  const npmVersion = runCommandForStatus('npm', ['--version']);
-  if (npmVersion.status === 0) {
-    add('pass', `npm available (${npmVersion.stdout.trim()})`);
-  } else {
-    add('fail', 'npm is not available in PATH');
-  }
-
-  add('pass', `Electron runtime Node ${process.version} (informational only)`, false);
-
-  const nodeModulesPath = path.resolve('node_modules');
-  const hasNodeModules = fs.existsSync(nodeModulesPath);
-  add(
-    hasNodeModules ? 'pass' : 'fail',
-    hasNodeModules ? 'Dependencies installed' : 'Dependencies missing (node_modules not found)',
-  );
+  add('pass', `Packaged Electron runtime available (${process.versions.electron || process.version})`);
 
   const hasGuiBuildOutput =
-    fs.existsSync(path.resolve('dist/gui/main.js')) &&
-    fs.existsSync(path.resolve('dist/gui/preload.js')) &&
-    fs.existsSync(path.resolve('dist/gui/worker.js')) &&
-    fs.existsSync(path.resolve('dist/gui/renderer/index.html'));
+    fs.existsSync(path.join(__dirname, 'main.js')) &&
+    fs.existsSync(path.join(__dirname, 'preload.js')) &&
+    fs.existsSync(path.join(__dirname, 'worker.js')) &&
+    fs.existsSync(path.join(__dirname, 'renderer', 'index.html'));
   add(
     hasGuiBuildOutput ? 'pass' : 'fail',
     hasGuiBuildOutput
       ? 'GUI build output exists (main/preload/worker/renderer)'
-      : 'GUI build output missing (dist/gui/main.js, preload.js, worker.js, renderer/index.html required)',
+      : 'GUI build output missing (main.js, preload.js, worker.js, renderer/index.html required)',
   );
 
-  if (checkPlaywrightChromiumInstalled()) {
-    add('pass', 'Playwright Chromium installed');
+  if (checkAutomationBrowserAvailable()) {
+    add('pass', 'Automation browser available (Microsoft Edge or Playwright Chromium)');
   } else {
-    add('warn', 'Playwright Chromium not installed; run setup/start again', false);
+    add('warn', 'No automation browser found; install Microsoft Edge or Playwright Chromium', false);
   }
 
-  const envPath = path.resolve('.env');
-  const envStatus = evaluateConfigEnv(envPath);
-  add(envStatus.exists ? 'pass' : 'fail', envStatus.exists ? '.env file exists' : '.env file missing');
+  const config = getConfig();
+  const envStatus = { validCredentials: Boolean(config.username && config.password), env: process.env };
+  add('pass', 'Per-user application settings available');
   add(
     envStatus.validCredentials ? 'pass' : 'fail',
     envStatus.validCredentials
@@ -357,10 +340,9 @@ async function runDoctor(loginTest: boolean): Promise<DoctorCheck[]> {
       : 'Blackboard credentials missing or placeholder values',
   );
 
-  const env = envStatus.env;
-  const downloadDir = path.resolve(env.DOWNLOAD_DIR || './downloads');
-  const logDir = path.resolve(path.dirname(env.LOG_FILE || './logs/whiteboard.log'));
-  const dbDir = path.resolve(path.dirname(env.DATABASE_PATH || './whiteboard.db'));
+  const downloadDir = path.resolve(config.downloadDir);
+  const logDir = path.resolve(path.dirname(config.logFile));
+  const dbDir = path.resolve(path.dirname(config.databasePath));
 
   const downloadDirWritable = checkWritableDir(downloadDir);
   const logDirWritable = checkWritableDir(logDir);
@@ -372,8 +354,8 @@ async function runDoctor(loginTest: boolean): Promise<DoctorCheck[]> {
   add(logDirWritable ? 'pass' : 'fail', `Log directory ${logDirWritable ? 'writable' : 'not writable'} (${logDir})`);
   add(dbDirWritable ? 'pass' : 'fail', `Database directory ${dbDirWritable ? 'writable' : 'not writable'} (${dbDir})`);
 
-  const baseUrl = env.BB_BASE_URL || 'https://shs.blackboardchina.cn';
-  const loginUrl = env.BB_LOGIN_URL || 'https://shs.blackboardchina.cn/webapps/login/';
+  const baseUrl = config.baseUrl;
+  const loginUrl = config.loginUrl;
   const baseReachable = await checkUrlReachable(baseUrl);
   const loginReachable = await checkUrlReachable(loginUrl);
   add(
@@ -409,36 +391,52 @@ async function runDoctor(loginTest: boolean): Promise<DoctorCheck[]> {
   return checks;
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  app.setAppUserModelId('com.panther114.blackboardchina.downloader');
+  const appPaths = ensureAppPaths();
+  desktopStore = new SecureDesktopStore(appPaths);
+  await desktopStore.migrateLegacySettings();
+  await desktopStore.applyToEnvironment();
+  if (process.argv.includes('--mcp')) {
+    startPackagedMcpServer();
+    return;
+  }
   createWindow();
+  initializeUpdater(state => sendWorkflowEvent('update:state', state));
+  const settings = desktopStore.loadSettings();
+  if (settings.autoCheckUpdates) {
+    setTimeout(() => void checkForUpdates().catch(() => undefined), 10_000);
+    setInterval(() => void checkForUpdates().catch(() => undefined), 6 * 60 * 60 * 1000);
+  }
 
-  ipcMain.handle('app:get-version', () => APP_VERSION);
+  ipcMain.handle('app:get-version', event => { assertTrustedSender(event); return appVersion(); });
 
-  ipcMain.handle('config:load', () => {
-    const env = readEnvFile(path.resolve('.env'));
+  ipcMain.handle('config:load', async event => {
+    assertTrustedSender(event);
+    const settings = desktopStore.loadSettings();
     return {
-      hasCredentials: hasValidCredentials(env),
-      username: env.BB_USERNAME || '',
-      downloadDir: env.DOWNLOAD_DIR || './downloads',
-      headless: env.HEADLESS !== 'false',
-      courseFilter: env.COURSE_FILTER || '',
+      hasCredentials: Boolean(settings.username && await desktopStore.getPassword()),
+      username: settings.username,
+      downloadDir: settings.downloadDir,
+      headless: settings.headless,
+      courseFilter: settings.courseFilter,
+      autoCheckUpdates: settings.autoCheckUpdates,
     };
   });
 
-  ipcMain.handle('setup:save', async (_event, payload) => {
-    const envPath = path.resolve('.env');
-    const existing = readEnvFile(envPath);
-    const values: Record<string, string> = {
-      BB_USERNAME: String(payload.username || '').trim(),
-      BB_PASSWORD: String(payload.password || ''),
-      DOWNLOAD_DIR: String(payload.downloadDir || './downloads').trim(),
-      HEADLESS: String(Boolean(payload.headless)),
-      COURSE_FILTER: existing.COURSE_FILTER || '',
-    };
-
-    writeEnvFile(envPath, values, { preserveEmptyPassword: true });
-    const effectiveEnv = readEnvFile(envPath);
-    Object.assign(process.env, effectiveEnv);
+  ipcMain.handle('setup:save', async (event, payload) => {
+    assertTrustedSender(event);
+    const current = desktopStore.loadSettings();
+    desktopStore.saveSettings({
+      username: String(payload.username || '').trim(),
+      downloadDir: String(payload.downloadDir || current.downloadDir).trim(),
+      headless: Boolean(payload.headless),
+      courseFilter: String(payload.courseFilter || current.courseFilter || ''),
+      autoCheckUpdates: payload.autoCheckUpdates === undefined ? current.autoCheckUpdates : Boolean(payload.autoCheckUpdates),
+    });
+    const password = String(payload.password || '');
+    if (password) await desktopStore.setPassword(password);
+    await desktopStore.applyToEnvironment();
 
     if (payload.testLogin) {
       const cfg = getConfig(compactConfigOverrides({ headless: payload.headless }));
@@ -455,28 +453,22 @@ app.whenReady().then(() => {
     return { ok: true };
   });
 
-  ipcMain.handle('setup:reset', () => {
-    const envPath = path.resolve('.env');
-    writeEnvFile(
-      envPath,
-      {
-        BB_USERNAME: '',
-        BB_PASSWORD: '',
-        DOWNLOAD_DIR: './downloads',
-        HEADLESS: 'true',
-        COURSE_FILTER: '',
-      },
-      { reset: true, preserveEmptyPassword: true },
-    );
+  ipcMain.handle('setup:reset', async event => {
+    assertTrustedSender(event);
+    desktopStore.saveSettings({ username: '', headless: true, courseFilter: '' });
+    desktopStore.clearPassword();
+    await desktopStore.applyToEnvironment();
     return { ok: true };
   });
 
-  ipcMain.handle('doctor:run', async (_event, payload) => {
+  ipcMain.handle('doctor:run', async (event, payload) => {
+    assertTrustedSender(event);
     const checks = await runDoctor(Boolean(payload?.loginTest));
     return checks;
   });
 
-  ipcMain.handle('workflow:start', async (_event, payload) => {
+  ipcMain.handle('workflow:start', async (event, payload) => {
+    assertTrustedSender(event);
     return invokeWorkerCommand('startWorkflow', {
       username: payload?.username,
       password: payload?.password,
@@ -485,47 +477,72 @@ app.whenReady().then(() => {
     });
   });
 
-  ipcMain.handle('workflow:discover-courses', async (_event, payload) => {
+  ipcMain.handle('workflow:discover-courses', async (event, payload) => {
+    assertTrustedSender(event);
     return invokeWorkerCommand('discoverCourses', {
       filterPattern: payload?.filterPattern,
     });
   });
 
-  ipcMain.handle('workflow:discover-files', async (_event, payload) => {
+  ipcMain.handle('workflow:discover-files', async (event, payload) => {
+    assertTrustedSender(event);
     return invokeWorkerCommand('discoverFiles', {
       courses: payload?.courses || [],
     });
   });
 
-  ipcMain.handle('workflow:download', async (_event, payload) => {
+  ipcMain.handle('workflow:download', async (event, payload) => {
+    assertTrustedSender(event);
     return invokeWorkerCommand('download', {
       files: payload?.files || [],
     });
   });
 
-  ipcMain.handle('workflow:cleanup', async () => {
+  ipcMain.handle('workflow:cleanup', async event => {
+    assertTrustedSender(event);
     if (!worker) return { ok: true };
     return invokeWorkerCommand('cleanup', {});
   });
 
-  ipcMain.handle('paths:get', () => {
+  ipcMain.handle('paths:get', event => {
+    assertTrustedSender(event);
     const config = getConfig();
     return {
       downloads: path.resolve(config.downloadDir),
       logs: path.resolve(path.dirname(config.logFile)),
-      summary: path.resolve('logs/latest-summary.txt'),
+      summary: path.join(getAppPaths().logsDir, 'latest-summary.txt'),
     };
   });
 
-  ipcMain.handle('path:open-downloads', async () => {
+  ipcMain.handle('path:open-downloads', async event => {
+    assertTrustedSender(event);
     const config = getConfig();
     return shell.openPath(path.resolve(config.downloadDir));
   });
 
-  ipcMain.handle('path:open-logs', async () => {
+  ipcMain.handle('path:open-logs', async event => {
+    assertTrustedSender(event);
     const config = getConfig();
     return shell.openPath(path.resolve(path.dirname(config.logFile)));
   });
+
+  ipcMain.handle('agent:status', async event => {
+    assertTrustedSender(event);
+    return agentService.status();
+  });
+  ipcMain.handle('agent:sync', async (event, payload) => {
+    assertTrustedSender(event);
+    return agentService.sync({
+      courseIds: Array.isArray(payload?.courseIds) ? payload.courseIds.map(String) : undefined,
+      includeFiles: Boolean(payload?.includeFiles),
+      includeInstructions: payload?.includeInstructions !== false,
+      outputDir: typeof payload?.outputDir === 'string' ? payload.outputDir : undefined,
+    });
+  });
+  ipcMain.handle('update:get-state', event => { assertTrustedSender(event); return getUpdateState(); });
+  ipcMain.handle('update:check', async event => { assertTrustedSender(event); return checkForUpdates(); });
+  ipcMain.handle('update:download', async event => { assertTrustedSender(event); await downloadUpdate(); return getUpdateState(); });
+  ipcMain.handle('update:install', event => { assertTrustedSender(event); installUpdate(); return { ok: true }; });
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();

@@ -1,7 +1,8 @@
-import { Page } from 'playwright';
-import { Config, Course, ContentFolder, DownloadableFile, SidebarLink } from '../types';
+import { Page } from 'playwright-core';
+import { Config, Course, ContentFolder, DownloadableFile, SidebarLink, ContentItem } from '../types';
 import { log } from '../utils/logger';
 import { sanitizeFilename, extractFilenameFromUrl, dumpPageStructure } from '../utils/helpers';
+import { contentHash, htmlToMarkdown, stableId } from '../agent/markdown';
 import {
   ALLOWED_DOC_EXT_RE,
   getAllowedExtFromName,
@@ -261,7 +262,7 @@ export class BlackboardScraper {
   /**
    * Get sidebar links for a course.
    */
-  async getSidebarLinks(courseUrl: string): Promise<SidebarLink[]> {
+  async getSidebarLinks(courseUrl: string, options?: { includeAnnouncements?: boolean }): Promise<SidebarLink[]> {
     log.debug(`Navigating to course: ${courseUrl}`);
     const ok = await this.navigateTo(courseUrl);
     if (!ok) {
@@ -306,7 +307,8 @@ export class BlackboardScraper {
       if (!href || !rawTitle) continue;
 
       log.debug(`Sidebar link found: "${rawTitle}" href="${href}"`);
-      if (isExcludedTitle(rawTitle) || isToolLike(rawTitle)) {
+      const keepAnnouncement = options?.includeAnnouncements === true && /announcement|公告/i.test(rawTitle);
+      if (isExcludedTitle(rawTitle) || (isToolLike(rawTitle) && !keepAnnouncement)) {
         log.debug(`Skipping sidebar link: "${rawTitle}" (tool/non-content)`);
         continue;
       }
@@ -401,6 +403,71 @@ export class BlackboardScraper {
 
     log.info(`Found ${files.length} downloadable files in current folder`);
     return files;
+  }
+
+  /**
+   * Extracts readable Blackboard content from the current course page without
+   * following unsafe navigation or writing to Blackboard. This deliberately
+   * does not inspect quizzes, gradebook, discussions or submission tools.
+   */
+  async getContentItems(course: Course, sectionName: string, folderPath: string[]): Promise<ContentItem[]> {
+    let itemSelector = '#content_listContainer .liItem, #content_listContainer .item';
+    try {
+      await this.page.waitForSelector('#content_listContainer', { timeout: CONTENT_CONTAINER_TIMEOUT_MS });
+    } catch {
+      try {
+        await this.page.waitForSelector('#announcementList, .announcementList', { timeout: 5_000 });
+        itemSelector = '#announcementList .announcement, #announcementList li, .announcementList .announcement, .announcementList li';
+      } catch {
+        return [];
+      }
+    }
+
+    const rawItems = await this.page.$$eval(itemSelector, nodes =>
+      nodes.map((node, index) => {
+        const titleNode = node.querySelector('h3, h2, .item h3, .itemTitle, a');
+        const title = (titleNode?.textContent || '').trim();
+        const html = (node.querySelector('.details, .vtbegenerated, .itemDetails') || node).innerHTML || '';
+        const href = titleNode?.getAttribute('href') || '';
+        const text = node.textContent || '';
+        // Playwright serializes this browser-context callback; DOM types are
+        // intentionally not included in the Node TypeScript configuration.
+        const attachmentUrls = Array.from(node.querySelectorAll('.attachments a[href], a[href*="bbcswebdav"], a[href*="execute/content"]') as any)
+          .map((anchor: any) => anchor.getAttribute('href') || '')
+          .filter(Boolean);
+        return { title, html, href, text, attachmentUrls, index };
+      }),
+    );
+
+    const items: ContentItem[] = [];
+    for (const raw of rawItems) {
+      const title = raw.title || `Course content ${raw.index + 1}`;
+      const normalizedHref = normalizeAbsoluteUrl(raw.href, this.config.baseUrl) || this.page.url();
+      const rawText = raw.text.toLowerCase();
+      const isAnnouncement = /announcement|公告/i.test(`${sectionName} ${this.page.url()}`);
+      const isAssignment = !isAnnouncement && (/assignment|作业|homework/.test(`${title} ${rawText}`) || /uploadassignment|assignment/i.test(normalizedHref));
+      const markdown = htmlToMarkdown(raw.html);
+      if (!markdown && !isAssignment) continue;
+      const id = stableId('item', `${course.id}|${normalizedHref}|${title}|${folderPath.join('/')}`);
+      const dueAt = raw.text.match(/(?:due|截止)[\s:：]*([^\n]{1,80})/i)?.[1]?.trim();
+      const points = raw.text.match(/(?:points?|分数)[\s:：]*([\d.]+)/i)?.[1];
+      items.push({
+        id,
+        kind: isAnnouncement ? 'announcement' : isAssignment ? 'assignment' : 'content',
+        courseId: course.id,
+        courseName: course.name,
+        sectionName,
+        folderPath,
+        title,
+        instructionsMarkdown: markdown,
+        sourceUrl: normalizedHref,
+        dueAt,
+        points,
+        attachmentIds: raw.attachmentUrls.map(url => stableId('attachment', normalizeAbsoluteUrl(url, this.config.baseUrl) || url)),
+        contentHash: contentHash(markdown),
+      });
+    }
+    return items;
   }
 
   // ---------------------------------------------------------------------------
