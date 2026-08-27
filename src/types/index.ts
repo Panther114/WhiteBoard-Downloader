@@ -69,6 +69,60 @@ export interface Config {
   retryDelay: number;
   /** Path to the JSON file-tree cache. Defaults to <downloadDir>/file_tree.json. */
   fileTreePath: string;
+  /** Optional persistent Playwright profile used by packaged desktop builds. */
+  browserProfileDir?: string;
+  /** Prefer the installed Microsoft Edge browser before bundled Playwright Chromium. */
+  useSystemEdge?: boolean;
+}
+
+export type ContentItemKind = 'content' | 'assignment' | 'announcement';
+
+/** Read-only Blackboard content prepared for agent consumption. */
+export interface ContentItem {
+  id: string;
+  kind: ContentItemKind;
+  courseId: string;
+  courseName: string;
+  sectionName: string;
+  folderPath: string[];
+  title: string;
+  instructionsMarkdown: string;
+  sourceUrl: string;
+  availableAt?: string;
+  dueAt?: string;
+  points?: string;
+  attachmentIds: string[];
+  contentHash: string;
+}
+
+export interface AgentAttachment {
+  id: string;
+  itemId?: string;
+  name: string;
+  url: string;
+  courseName: string;
+  sectionName: string;
+  localPath?: string;
+  relativePath?: string;
+  size?: number;
+  mimeType?: string;
+  status: 'pending' | 'downloaded' | 'skipped' | 'failed';
+}
+
+export interface AgentExportManifest {
+  schemaVersion: 1;
+  generatedAt: string;
+  source: { baseUrl: string; mode: 'read-only' };
+  courses: Array<Pick<Course, 'id' | 'name' | 'url'>>;
+  items: ContentItem[];
+  attachments: AgentAttachment[];
+  warnings: string[];
+  summary: {
+    courses: number;
+    items: number;
+    attachments: number;
+    downloadedFiles: number;
+  };
 }
 
 export interface DownloadProgress {

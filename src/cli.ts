@@ -12,9 +12,9 @@ import { getConfig } from './config';
 import { Config, Course, DiscoveredFile } from './types';
 import { formatBytes } from './utils/helpers';
 import { BlackboardAuth } from './auth';
-import { readEnvFile, writeEnvFile, hasValidCredentials } from './utils/envFile';
+import { readEnvFile, writeEnvFile } from './utils/envFile';
 import {
-  checkPlaywrightChromiumInstalled,
+  checkAutomationBrowserAvailable,
   checkUrlReachable,
   checkWritableDir,
   evaluateConfigEnv,
@@ -27,16 +27,81 @@ import {
 import { formatUserError, mapToUserError } from './utils/userErrors';
 import { writeRunSummary } from './utils/runSummary';
 import { DownloadWorkflow } from './workflow/downloadWorkflow';
+import { AgentService } from './agent/service';
+import { startMcpServer } from './mcp/server';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const InquirerSeparator: new (line?: string) => unknown = (inquirer as any).Separator;
 
 const program = new Command();
 
+const agent = program.command('agent').description('Read-only, structured Blackboard exports for agents');
+
+agent
+  .command('status')
+  .option('--json', 'Emit only JSON')
+  .action(async options => {
+    try {
+      const value = await new AgentService().status();
+      if (options.json) console.log(JSON.stringify(value));
+      else console.log(JSON.stringify(value, null, 2));
+    } catch (error) {
+      if (options.json) console.log(JSON.stringify({ ok: false, error: error instanceof Error ? error.message : String(error) }));
+      else handleUserFacingError(error);
+      process.exitCode = 1;
+    }
+  });
+
+agent
+  .command('courses')
+  .option('--json', 'Emit only JSON')
+  .action(async options => {
+    try {
+      const courses = await new AgentService().listCourses();
+      if (options.json) console.log(JSON.stringify({ courses }));
+      else console.log(JSON.stringify({ courses }, null, 2));
+    } catch (error) {
+      if (options.json) console.log(JSON.stringify({ ok: false, error: error instanceof Error ? error.message : String(error) }));
+      else handleUserFacingError(error);
+      process.exitCode = 1;
+    }
+  });
+
+agent
+  .command('sync')
+  .option('--course <id...>', 'Course IDs to sync; omit for all courses')
+  .option('--include-files', 'Download allowed attachments', false)
+  .option('--no-include-instructions', 'Skip instructional content extraction')
+  .option('--output <path>', 'Export root; defaults to configured download directory')
+  .option('--json', 'Emit only JSON')
+  .action(async options => {
+    try {
+      const summary = await new AgentService().sync({
+        courseIds: options.course,
+        includeFiles: Boolean(options.includeFiles),
+        includeInstructions: options.includeInstructions !== false,
+        outputDir: options.output,
+      });
+      if (options.json) console.log(JSON.stringify({ ok: true, ...summary }));
+      else console.log(JSON.stringify({ ok: true, ...summary }, null, 2));
+    } catch (error) {
+      if (options.json) console.log(JSON.stringify({ ok: false, error: error instanceof Error ? error.message : String(error) }));
+      else handleUserFacingError(error);
+      process.exitCode = 1;
+    }
+  });
+
+program
+  .command('mcp')
+  .description('Start the BlackboardChina MCP server on stdio')
+  .action(async () => {
+    await startMcpServer();
+  });
+
 program
   .name('whiteboard-dl')
   .description('Modern automation tool to download course materials from SHSID Blackboard China')
-  .version('0.8.3');
+  .version('1.0.0');
 
 function isDebugMode(): boolean {
   return process.env.DEBUG === '1' || process.env.LOG_LEVEL === 'debug';
@@ -236,7 +301,7 @@ program
       if (isSupportedNodeVersion(process.version)) {
         add('pass', `Node.js version supported (${process.version})`);
       } else {
-        add('fail', `Node.js version unsupported (${process.version}); required >=18 and <24`);
+        add('fail', `Node.js version unsupported (${process.version}); required >=22 and <25`);
       }
 
       const npmCheck = runCommandForStatus('npm', ['--version']);
@@ -258,10 +323,10 @@ program
         add('fail', 'Build output missing (dist/cli.js not found)');
       }
 
-      if (checkPlaywrightChromiumInstalled()) {
-        add('pass', 'Playwright Chromium installed');
+      if (checkAutomationBrowserAvailable()) {
+        add('pass', 'Automation browser available (Microsoft Edge or Playwright Chromium)');
       } else {
-        add('warn', 'Playwright Chromium not installed; run setup/start again', false);
+        add('warn', 'No automation browser found; install Microsoft Edge or Playwright Chromium', false);
       }
 
       const envPath = path.resolve('.env');
@@ -395,7 +460,7 @@ program
     let workflow: DownloadWorkflow | null = null;
 
     try {
-      console.log(chalk.bold.cyan('\n🎓 BlackboardChina Downloader v0.8.3\n'));
+      console.log(chalk.bold.cyan('\n🎓 BlackboardChina Downloader v1.0.0\n'));
 
       let username = options.username;
       let password = options.password;
@@ -869,4 +934,4 @@ async function selectFilesInteractively(files: DiscoveredFile[]): Promise<Discov
   return (answers.selectedFiles as DiscoveredFile[]) || [];
 }
 
-program.parse();
+void program.parseAsync();

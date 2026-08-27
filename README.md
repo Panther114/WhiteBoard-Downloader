@@ -1,4 +1,4 @@
-# BlackboardChina Downloader v0.8.3
+# BlackboardChina Downloader v1.0.0
 
 This application is provided solely for educational, personal, and technical purposes. By using this application, you acknowledge and agree that you are solely responsible for ensuring that your use complies with all applicable SHSID policies, platform terms, laws, and regulations.
 
@@ -6,7 +6,7 @@ The developer does not endorse, encourage, or authorize any misuse of this appli
 
 ## Normal user path (GitHub Releases ZIP)
 
-Requires Node.js **20.x or 22.x LTS** installed manually (`24.x` is not supported).
+Requires Node.js **22.x or 24.x** installed manually.
 
 1. Download the ZIP from **GitHub Releases**.
 2. Unzip it.
@@ -54,6 +54,30 @@ npm start download
 - `npm run gui` – launch desktop GUI (no rebuild)
 - `npm run gui:dev` – GUI development mode
 - `npm run build:gui` – build CLI + GUI bundles
+
+## Agent and MCP integration
+
+The installed Windows application can use the credentials saved in its Setup screen. Configure an MCP client to start its installed executable with `--mcp`:
+
+```json
+{
+  "mcpServers": {
+    "blackboardchina": {
+      "command": "C:\\Users\\<you>\\AppData\\Local\\Programs\\BlackboardChina Downloader\\BlackboardChina Downloader.exe",
+      "args": ["--mcp"]
+    }
+  }
+}
+```
+
+For a portable CLI integration, configure `BB_USERNAME`, `BB_PASSWORD`, and `DOWNLOAD_DIR` in the MCP process environment (or a `.env` in its working directory), then use one of:
+
+```bash
+npx --yes whiteboard-downloader@1.0.0 mcp
+bunx --bun whiteboard-downloader@1.0.0 mcp
+```
+
+The MCP tools are read-only: `blackboard_status`, `blackboard_list_courses`, `blackboard_sync`, and `blackboard_get_item`. `blackboard_sync` exports Markdown plus a manifest; set `include_files` only when attachments are needed.
 
 ## Strict document allowlist
 

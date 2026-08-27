@@ -1,8 +1,8 @@
 {
   "name": "whiteboard-downloader",
-  "version": "0.8.3",
-  "description": "Modern, async-first automation tool to download course materials from SHSID Blackboard China",
-  "main": "dist/index.js",
+  "version": "1.0.0",
+  "description": "Desktop and agent-ready Blackboard China course-material downloader",
+  "main": "dist/gui/main.js",
   "bin": {
     "whiteboard-dl": "./dist/cli.js"
   },
@@ -10,17 +10,21 @@
     "bootstrap": "node scripts/bootstrap.js --mode=tui",
     "bootstrap:gui": "node scripts/bootstrap.js --mode=gui",
     "build": "tsc",
+    "prepack": "npm run build",
     "build:gui": "tsc -p tsconfig.gui.json && vite build --config vite.gui.config.ts",
+    "build:app": "npm run build:gui && electron-builder --win nsis --x64",
+    "build:unpacked": "npm run build:gui && electron-builder --win dir --x64",
     "dev": "ts-node src/cli.ts",
     "gui": "electron dist/gui/main.js",
     "gui:dev": "npm run build && concurrently -k \"vite --config vite.gui.config.ts\" \"wait-on tcp:5173 && electron dist/gui/main.js --dev\"",
     "start": "node dist/cli.js",
     "setup": "node dist/cli.js setup",
-    "test": "jest",
+    "test": "jest --runInBand",
     "lint": "eslint src --ext .ts",
     "format": "prettier --write \"src/**/*.ts\"",
     "docker:build": "docker build -t whiteboard-downloader .",
-    "docker:run": "docker run -it --rm -v $(pwd)/downloads:/app/downloads whiteboard-downloader"
+    "docker:run": "docker run -it --rm -v $(pwd)/downloads:/app/downloads whiteboard-downloader",
+    "mcp": "node dist/mcp/server.js"
   },
   "keywords": [
     "blackboard",
@@ -29,24 +33,34 @@
     "education",
     "web-scraping"
   ],
+  "files": [
+    "dist/**",
+    "assets/**",
+    "README.md",
+    "LICENSE"
+  ],
   "author": "Gavania",
   "license": "MIT",
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.26.0",
     "axios": "^1.6.0",
-    "better-sqlite3": "^9.2.2",
+    "better-sqlite3": "^13.0.3",
     "chalk": "^4.1.2",
     "cli-progress": "^3.12.0",
     "commander": "^11.1.0",
     "dotenv": "^16.3.1",
+    "electron-updater": "^6.6.2",
     "inquirer": "^8.2.5",
     "mime-types": "^2.1.35",
     "ora": "^5.4.1",
     "p-limit": "^3.1.0",
     "p-retry": "^4.6.2",
-    "playwright": "^1.40.0",
+    "playwright-core": "^1.40.0",
     "sanitize-filename": "^1.6.3",
     "winston": "^3.11.0",
-    "zod": "^3.22.4"
+    "zod": "^3.22.4",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.8",
@@ -58,6 +72,8 @@
     "@typescript-eslint/eslint-plugin": "^6.13.0",
     "@typescript-eslint/parser": "^6.13.0",
     "eslint": "^8.55.0",
+    "electron": "^41.3.0",
+    "electron-builder": "^26.0.0",
     "jest": "^29.7.0",
     "prettier": "^3.1.0",
     "ts-jest": "^29.1.1",
@@ -69,14 +85,51 @@
     "@types/react-dom": "^18.3.7",
     "@vitejs/plugin-react": "^4.3.4",
     "concurrently": "^9.2.1",
-    "electron": "^41.3.0",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
     "vite": "^5.4.21",
     "wait-on": "^9.0.5"
   },
   "engines": {
-    "node": ">=18.0.0 <24.0.0",
+    "node": ">=22.0.0 <25.0.0",
     "npm": ">=8.0.0"
+  },
+  "build": {
+    "appId": "com.panther114.blackboardchina.downloader",
+    "productName": "BlackboardChina Downloader",
+    "artifactName": "BlackboardChina-Downloader-Setup-${version}-${arch}.${ext}",
+    "asar": true,
+    "asarUnpack": [
+      "node_modules/better-sqlite3/**",
+      "node_modules/playwright-core/**"
+    ],
+    "files": [
+      "dist/**",
+      "assets/**",
+      "package.json",
+      "node_modules/**",
+      "!node_modules/**/test/**",
+      "!node_modules/**/tests/**",
+      "!node_modules/**/README*"
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "win": {
+      "icon": "assets/app-icon.ico",
+      "target": ["nsis"],
+      "verifyUpdateCodeSignature": false,
+      "signtoolOptions": {
+        "publisherName": "Panther114"
+      }
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": false,
+      "allowElevation": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "deleteAppDataOnUninstall": false
+    },
+    "publish": [{ "provider": "github", "owner": "Panther114", "repo": "BlackboardChina-downloader", "releaseType": "release" }]
   }
 }

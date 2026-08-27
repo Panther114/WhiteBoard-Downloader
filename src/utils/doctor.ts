@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { chromium } from 'playwright';
+import { chromium } from 'playwright-core';
 import axios from 'axios';
 import { Config } from '../types';
 import { readEnvFile, hasValidCredentials } from './envFile';
@@ -16,7 +16,7 @@ export function isSupportedNodeVersion(versionString: string): boolean {
   const match = versionString.match(/v?(\d+)/i);
   if (!match) return false;
   const major = Number(match[1]);
-  return major >= 18 && major < 24;
+  return major >= 22 && major < 25;
 }
 
 export function formatDoctorLine(check: DoctorCheck): string {
@@ -41,6 +41,18 @@ export function checkPlaywrightChromiumInstalled(): boolean {
   } catch {
     return false;
   }
+}
+
+/** The default Windows configuration launches installed Microsoft Edge first. */
+export function checkAutomationBrowserAvailable(): boolean {
+  if (checkPlaywrightChromiumInstalled()) return true;
+  if (process.platform !== 'win32') return false;
+
+  const edgePaths = [
+    path.join(process.env.ProgramFiles || 'C:\\Program Files', 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
+    path.join(process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)', 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
+  ];
+  return edgePaths.some(executable => fs.existsSync(executable));
 }
 
 export async function checkUrlReachable(url: string, timeout = 8000): Promise<boolean> {
@@ -72,7 +84,7 @@ export interface ConfigReadyForLaunchResult {
 }
 
 export function isConfigReadyForLaunch(envPath: string): ConfigReadyForLaunchResult {
-  const { exists, validCredentials, env } = evaluateConfigEnv(envPath);
+  const { exists, validCredentials } = evaluateConfigEnv(envPath);
   if (!exists) {
     return { ok: false, reason: '.env missing' };
   }

@@ -25,6 +25,8 @@ const ConfigSchema = z.object({
   maxRetries: z.number().int().nonnegative().default(3),
   retryDelay: z.number().int().nonnegative().default(2000),
   fileTreePath: z.string().default(''),
+  browserProfileDir: z.string().optional(),
+  useSystemEdge: z.boolean().default(process.platform === 'win32'),
 });
 
 /**
@@ -50,6 +52,8 @@ export function loadConfig(): Config {
     maxRetries: parseInt(process.env.MAX_RETRIES || '3', 10),
     retryDelay: parseInt(process.env.RETRY_DELAY || '2000', 10),
     fileTreePath: process.env.FILE_TREE_PATH || path.join(downloadDir, 'file_tree.json'),
+    browserProfileDir: process.env.BROWSER_PROFILE_DIR || undefined,
+    useSystemEdge: process.env.USE_SYSTEM_EDGE !== 'false',
   };
 
   // Validate configuration

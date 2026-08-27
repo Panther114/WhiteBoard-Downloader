@@ -5,10 +5,10 @@ import { isSupportedNodeVersion, formatDoctorLine, isConfigReadyForLaunch } from
 
 describe('doctor helpers', () => {
   it('validates supported node version range', () => {
-    expect(isSupportedNodeVersion('v18.20.0')).toBe(true);
-    expect(isSupportedNodeVersion('v23.1.0')).toBe(true);
-    expect(isSupportedNodeVersion('v17.9.0')).toBe(false);
-    expect(isSupportedNodeVersion('v24.0.0')).toBe(false);
+    expect(isSupportedNodeVersion('v22.0.0')).toBe(true);
+    expect(isSupportedNodeVersion('v24.14.0')).toBe(true);
+    expect(isSupportedNodeVersion('v21.9.0')).toBe(false);
+    expect(isSupportedNodeVersion('v25.0.0')).toBe(false);
   });
 
   it('formats doctor output line', () => {

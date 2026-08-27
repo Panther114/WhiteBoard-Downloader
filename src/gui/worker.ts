@@ -1,5 +1,4 @@
 import { compactConfigOverrides, getConfig } from '../config';
-import { Course, DiscoveredFile } from '../types';
 import { writeRunSummary, RunSummaryReport } from '../utils/runSummary';
 import { DownloadWorkflow } from '../workflow/downloadWorkflow';
 import {
