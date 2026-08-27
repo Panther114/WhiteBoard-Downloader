@@ -596,6 +596,7 @@ export function App() {
               className={`rail-item ${activeView === item.id ? 'is-active' : ''}`}
               aria-label={item.label}
               aria-current={activeView === item.id ? 'page' : undefined}
+              title={item.hint}
               onClick={() => onNav(item.id)}
             >
               <span className="rail-icon">{item.icon}</span>
@@ -625,7 +626,6 @@ export function App() {
       <main className="stage">
         <header className="topbar">
           <div className="topbar-crumb">
-            <span className="eyebrow">{activeView === 'download' ? 'Workflow' : 'Section'}</span>
             <h1>
               <Icon name={activeView === 'download' ? 'download' : activeView} size={24} />
               {navItems.find(n => n.id === activeView)?.label ?? 'Home'}
@@ -690,11 +690,10 @@ export function App() {
           <section className="view">
             <div className="hero">
               <div className="hero-copy">
-              <span className="eyebrow">Course-material retrieval, made calm</span>
               <h2 className="hero-title">Pull your Blackboard files without the chaos.</h2>
               <p className="hero-lede">
-                Sign in once, pick exactly the courses and documents you need, and watch them land in a tidy
-                folder. Nothing is uploaded or changed on Blackboard — this only reads.
+                Sign in once, choose your courses and files, and save them to a tidy folder. Blackboard stays
+                read-only.
               </p>
               <div className="hero-actions">
                 <button className="btn-primary btn-lg" onClick={beginDownload}>
